@@ -28,6 +28,10 @@
 
 #define _FILE_ "main.cpp" // Replacement for __FILE__ without the path
 
+extern "C" {
+	Result svchax_init(void);
+}
+
 typedef struct
 {
 	std::u16string name;
@@ -188,65 +192,89 @@ void installUpdates(bool downgrade)
 	}
 }
 
+s32 installUpdatesUpdate() {
+	installUpdates(false);
+	return 0;
+}
+
+s32 installUpdatesDowngrade() {
+	installUpdates(true);
+	return 0;
+}
 
 int main()
 {
-	
+
 	bool once = false;
 
 	consoleInit(GFX_TOP, NULL);
 
-	printf("sysUpdater 0.4.2b by profi200\n\n\n");
-	printf("(A) update\n(Y) downgrade\n(B) exit\n\n");
-	printf("Use the HOME button if you run the CIA version.\n");
-	printf("If you started the update you can't abort it!\n\n");
-	printf("\x1b[31mIMPORTANT: Don't run this in sysNAND Gateway mode or it will brick!\x1b[0m\n\n\n");
+	printf("init svchax");
+
+	if (!svchax_init()) {
+		printf("sysUpdater 0.4.2b by profi200\n\n\n");
+		printf("svchax support by aliaspider\n\n\n");
+		printf("Compiled by LarBob\n\n\n");
+		printf("Built March 7, 2016\n\n\n");
+		printf("(A) update\n(Y) downgrade\n(B) exit\n\n");
+		printf("Use the HOME button if you run the CIA version.\n");
+		printf("If you started the update you can't abort it!\n\n");
+		printf("\x1b[31mIMPORTANT: Don't run this in sysNAND Gateway mode or it will brick!\x1b[0m\n\n\n");
 
 
-	while(aptMainLoop())
-	{
-		hidScanInput();
-
-
-		if(hidKeysDown() & KEY_B)
-			break;
-		if(!once)
+		while(aptMainLoop())
 		{
-			if(hidKeysDown() & (KEY_A | KEY_Y))
+			hidScanInput();
+
+
+			if(hidKeysDown() & KEY_B)
+				break;
+			if(!once)
 			{
-				try
+				if(hidKeysDown() & (KEY_A | KEY_Y))
 				{
-					installUpdates((bool)(hidKeysDown() & KEY_Y));
+					try
+					{
+						if ((bool)(hidKeysDown() & KEY_Y)) {
+							svcBackdoor(installUpdatesDowngrade);
+						} else {
+							svcBackdoor(installUpdatesUpdate);
+						}
 
-					printf("\n\nUpdates installed. Rebooting in 10 seconds...\n");
-					svcSleepThread(10000000000LL);
+						printf("\n\nUpdates installed. Rebooting in 10 seconds...\n");
+						svcSleepThread(10000000000LL);
 
-					aptOpenSession();
-					APT_HardwareResetAsync();
-					aptCloseSession();
-					once = true;
-				}
-				catch(fsException& e)
-				{
-					printf("\n%s\n", e.what());
-					printf("Did you store the update files in '/updates'?");
-					once = true;
-				}
-				catch(titleException& e)
-				{
-					printf("\n%s\n", e.what());
-					once = true;
+						aptOpenSession();
+						APT_HardwareResetAsync();
+						aptCloseSession();
+						once = true;
+					}
+					catch(fsException& e)
+					{
+						printf("\n%s\n", e.what());
+						printf("Did you store the update files in '/updates'?");
+						once = true;
+					}
+					catch(titleException& e)
+					{
+						printf("\n%s\n", e.what());
+						once = true;
+					}
 				}
 			}
+
+
+			gfxFlushBuffers();
+			gfxSwapBuffers();
+			gspWaitForVBlank();
 		}
-
-
-		gfxFlushBuffers();
-		gfxSwapBuffers();
-		gspWaitForVBlank();
+	} else {
+		printf("svchax failed, please reboot");
+		while (aptMainLoop()) {
+			svcSleepThread(10000000000LL);
+		}
 	}
 
 
-	
 	return 0;
 }
