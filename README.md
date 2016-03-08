@@ -1,3 +1,7 @@
+## NOTE
+
+AngelSL's svchax sysUpdater. Doesn't work. All credit to him. Preserved for historical reasons.
+
 ## sysUpdater
 
 A quick tool for manually updating a 3DS using CIA files.
