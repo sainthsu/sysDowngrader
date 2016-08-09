@@ -23,7 +23,9 @@
 #include "fs.h"
 
 extern "C" {
-    void svchax_init();
+    Result svchax_init(bool patch_srv);
+    extern u32 __ctr_svchax;
+    extern u32 __ctr_svchax_srv;
 }
 
 // Simple std::sort() compar function for file names
@@ -53,8 +55,11 @@ int getAMu() {
   printf("Attempting svchax...\n");
 
   // try to get arm11
-  svchax_init();
+  svchax_init(true);
   printf("Initted svchax...\n\n");
+  printf(__ctr_svchax ? "\x1b[32mGot privileged svc calls\x1b[0m\n" : "\x1b[31mDid not get privileged svc calls\x1b[0m\n");
+  printf(__ctr_svchax_srv ? "\x1b[32mGot privileged services\x1b[0m\n\n" : "\x1b[31mDid not get privileged services\x1b[0m\n\n");
+
   aptInit();
   printf("Initted apt...\n");
 
@@ -66,6 +71,5 @@ int getAMu() {
     printf("\x1b[32mGot am:u handle!\x1b[0m\n\n");
     return 0;
   }
-
   return 1;
 }
