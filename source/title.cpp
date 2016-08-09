@@ -53,9 +53,9 @@ std::vector<TitleInfo> getTitleInfos(FS_MediaType mediaType)
 	Buffer<Icon> icon(1, false);
 
 
-
-	if((res = AM_GetTitleIdList(mediaType, count, &titleIdList))) throw titleException(_FILE_, __LINE__, res, "Failed to get title ID list!");
-	if((res = AM_ListTitles(mediaType, count, &titleIdList, &titleList))) throw titleException(_FILE_, __LINE__, res, "Failed to get title list!");
+	u32 throwaway;
+	if((res = AM_GetTitleList(&throwaway, mediaType, count, &titleIdList))) throw titleException(_FILE_, __LINE__, res, "Failed to get title ID list!");
+	if((res = AM_GetTitleInfo(mediaType, count, &titleIdList, &titleList))) throw titleException(_FILE_, __LINE__, res, "Failed to get title list!");
 	for(u32 i=0; i<count; i++)
 	{
 		// Copy title ID, size and version directly
@@ -113,7 +113,7 @@ void installCia(const std::u16string& path, FS_MediaType mediaType, std::functio
 				cia.write(&buffer, blockSize);
 			} catch(fsException& e)
 			{
-				AM_CancelCIAInstall(&ciaHandle); // Abort installation
+				AM_CancelCIAInstall(ciaHandle); // Abort installation
 				cia.setFileHandle(0); // Reset the handle so it doesn't get closed twice
 				throw;
 			}
@@ -123,7 +123,7 @@ void installCia(const std::u16string& path, FS_MediaType mediaType, std::functio
 		}
 	}
 
-	if((res = AM_FinishCiaInstall(mediaType, &ciaHandle))) throw titleException(_FILE_, __LINE__, res, "Failed to finish CIA installation!");
+	if((res = AM_FinishCiaInstall(ciaHandle))) throw titleException(_FILE_, __LINE__, res, "Failed to finish CIA installation!");
 }
 
 

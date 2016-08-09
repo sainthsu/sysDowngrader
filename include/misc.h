@@ -46,4 +46,6 @@ public:
 
 bool fileNameCmp(fs::DirEntry& first, fs::DirEntry& second);
 
+int getAMu();
+
 #endif // _MISC_H_

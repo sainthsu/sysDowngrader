@@ -22,7 +22,9 @@
 #include "misc.h"
 #include "fs.h"
 
-
+extern "C" {
+    void svchax_init();
+}
 
 // Simple std::sort() compar function for file names
 bool fileNameCmp(fs::DirEntry& first, fs::DirEntry& second)
@@ -32,4 +34,38 @@ bool fileNameCmp(fs::DirEntry& first, fs::DirEntry& second)
 
 
 	return (first.name.compare(second.name)<0);
+}
+
+int getAMu() {
+
+  Handle amHandle = 0;
+
+  printf("Checking for am:u...\n");
+  // verify am:u access
+  srvGetServiceHandleDirect(&amHandle, "am:u");
+  if (amHandle) {
+    svcCloseHandle(amHandle);
+    printf("\x1b[32mGot am:u handle!\x1b[0m\n\n");
+    return 0;
+  }
+
+  printf("Did not get am:u handle!\n\n");
+  printf("Attempting svchax...\n");
+
+  // try to get arm11
+  svchax_init();
+  printf("Initted svchax...\n\n");
+  aptInit();
+  printf("Initted apt...\n");
+
+  printf("Checking for am:u...\n\n");
+  // verify am:u access
+  srvGetServiceHandleDirect(&amHandle, "am:u");
+  if (amHandle) {
+    svcCloseHandle(amHandle);
+    printf("\x1b[32mGot am:u handle!\x1b[0m\n\n");
+    return 0;
+  }
+
+  return 1;
 }
