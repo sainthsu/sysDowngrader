@@ -80,22 +80,9 @@ bool sortTitlesLowToHigh(const TitleInstallInfo &a, const TitleInstallInfo &b) {
 // Fix compile error. This should be properly initialized if you fiddle with the title stuff!
 u8 sysLang = 0;
 
-
-// Override the default service init/exit functions
+// Override the default service exit functions
 extern "C"
 {
-	void __appInit()
-	{
-		// Initialize services
-		srvInit();
-		aptInit();
-		gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
-		hidInit();
-		fsInit();
-		sdmcArchiveInit();
-		amInit();
-	}
-
 	void __appExit()
 	{
 		// Exit services
@@ -108,7 +95,6 @@ extern "C"
 		srvExit();
 	}
 }
-
 
 // Find title and compare versions. Returns CIA file version - installed title version
 int versionCmp(std::vector<TitleInfo>& installedTitles, u64& titleID, u16 version)
@@ -190,6 +176,7 @@ void installUpdates(bool downgrade)
 
 int main()
 {
+	gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
 
 	bool once = false;
 	int mode;

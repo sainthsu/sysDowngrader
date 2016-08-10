@@ -57,11 +57,12 @@ int getAMu() {
   // try to get arm11
   svchax_init(true);
   printf("Initted svchax...\n\n");
-  printf(__ctr_svchax ? "\x1b[32mGot privileged svc calls\x1b[0m\n" : "\x1b[31mDid not get privileged svc calls\x1b[0m\n");
-  printf(__ctr_svchax_srv ? "\x1b[32mGot privileged services\x1b[0m\n\n" : "\x1b[31mDid not get privileged services\x1b[0m\n\n");
 
   aptInit();
-  printf("Initted apt...\n");
+	fsInit();
+	sdmcArchiveInit();
+	amInit();
+  printf("Initted services...\n");
 
   printf("Checking for am:u...\n\n");
   // verify am:u access
