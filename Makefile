@@ -27,13 +27,13 @@ include $(DEVKITARM)/3ds_rules
 #     - icon.png
 #     - <libctru folder>/default_icon.png
 #---------------------------------------------------------------------------------
-TARGET		:=	sysUpdater
+TARGET		:=	sysDowngrader
 BUILD		:=	build
 SOURCES		:=	source
 DATA		:=	data
 INCLUDES	:=	include
 APP_AUTHOR	:=	profi200
-APP_DESCRIPTION :=  sysUpdater
+APP_DESCRIPTION :=  sysDowngrader
 ICON		:=	app/icon48x48.png
 BNR_IMAGE	:=  app/banner.png
 BNR_AUDIO	:=	app/BannerAudio.bcwav

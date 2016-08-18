@@ -25,6 +25,7 @@
 #include "fs.h"
 #include "misc.h"
 #include "title.h"
+#include "hashes.h"
 
 #define _FILE_ "main.cpp" // Replacement for __FILE__ without the path
 
@@ -118,6 +119,9 @@ void installUpdates(bool downgrade)
 	std::vector<TitleInfo> installedTitles = getTitleInfos(MEDIATYPE_NAND);
 	std::vector<TitleInstallInfo> titles;
 
+	u8 is_n3ds = 0;
+	APT_CheckNew3DS(&is_n3ds);
+
 	Buffer<char> tmpStr(256);
 	Result res;
 	TitleInstallInfo installInfo;
@@ -125,6 +129,104 @@ void installUpdates(bool downgrade)
 	fs::File f;
 
 	printf("Getting CIA file informations...\n\n");
+
+	for(auto it : filesDirs)
+	{
+		if(!it.isDir)
+		{
+			if(it.name[0] == u'.') continue;
+
+			f.open(u"/updates/" + it.name, FS_OPEN_READ);
+			if((res = AM_GetCiaFileInfo(MEDIATYPE_NAND, &ciaFileInfo, f.getFileHandle())))
+				throw titleException(_FILE_, __LINE__, res, "Failed to get CIA file info!");
+
+			if(ciaFileInfo.titleID != 0x0004013800000002LL && ciaFileInfo.titleID != 0x0004013820000002L)
+				continue;
+
+			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds != 0)
+				throw titleException(_FILE_, __LINE__, res, "Installing N3DS pack on O3DS will brick!");
+			if(ciaFileInfo.titleID == 0x0004013820000002L && is_n3ds != 1 && ciaFileInfo.version > 11872)
+				throw titleException(_FILE_, __LINE__, res, "Installing O3DS pack >6.0 on N3DS will always brick!");
+
+			if(ciaFileInfo.titleID == 0x0004013820000002L && is_n3ds != 1 && ciaFileInfo.version < 11872){
+				printf("Installing O3DS pack on N3DS will brick unless you swap the NCSD and crypto slot!\n");
+				printf("!! DO NOT CONTINUE UNLESS !!\n!! YOU ARE ON A9LH OR REDNAND !!\n\n");
+				printf("(A) continue\n(a) cancel\n\n");
+				while(aptMainLoop())
+				{
+					hidScanInput();
+
+					if(hidKeysDown() & KEY_A)
+						break;
+
+					if(hidKeysDown() & KEY_B)
+						throw titleException(_FILE_, __LINE__, res, "Canceled!");
+				}
+			}
+
+			printf("Getting /updates/ firmware version...\n\n");
+			printf("NATVE_FIRM (");
+
+			tmpStr.clear();
+			utf16_to_utf8((u8*) &tmpStr, (u16*) it.name.c_str(), 255);
+			printf("%s", &tmpStr);
+
+			printf(") is v");
+			printf("%i\n", ciaFileInfo.version);
+
+			printf("Verifying /updates/ firmware files...\n");
+
+			for(auto const &firmVersionMap : firmVersions) {
+
+				if(firmVersionMap.first == ciaFileInfo.version) {
+
+					for(auto it2 : filesDirs) {
+						for(auto const &devicesVersionMap : firmVersionMap.second) {
+
+							tmpStr.clear();
+							utf16_to_utf8((u8*) &tmpStr, (u16*) it2.name.c_str(), 255);
+
+							if(&tmpStr == devicesVersionMap.first) {
+
+								for(auto it3 : filesDirs) {
+									for(auto const &regionVersionMap : devicesVersionMap.second) {
+
+										tmpStr.clear();
+										utf16_to_utf8((u8*) &tmpStr, (u16*) it3.name.c_str(), 255);
+
+										if(&tmpStr == regionVersionMap.first) {
+
+											if(filesDirs.size() > regionVersionMap.second.size()) throw titleException(_FILE_, __LINE__, res, "Too many titles in /updates/ found!\n");
+											if(filesDirs.size() < regionVersionMap.second.size()) throw titleException(_FILE_, __LINE__, res, "Too few titles in /updates/ found!\n");
+
+											for(auto it4 : filesDirs) {
+
+												tmpStr.clear();
+												utf16_to_utf8((u8*) &tmpStr, (u16*) it4.name.c_str(), 255);
+												printf("%s : ", &tmpStr);
+
+												printf("%s\n", regionVersionMap.second.find(&tmpStr)->second.c_str());
+
+												//check file against hashes here
+
+											}
+
+										}
+
+									}
+				  			}
+
+							}
+
+						}
+	  			}
+
+		 		}
+			}
+			svcSleepThread(10000000000000LL);
+		}
+
+	}
 
 	for(auto it : filesDirs)
 	{
@@ -183,7 +285,7 @@ int main()
 
 	consoleInit(GFX_TOP, NULL);
 
-	printf("sysUpdater with svchax\n\n");
+	printf("sysDowngrader with svchax\n\n");
 	printf("(A) update\n(Y) downgrade\n(X) test svchax\n(B) exit\n\n");
 	printf("Use the HOME button to exit the CIA version.\n");
 	printf("Updates cannot be aborted once started!\n\n\n");
