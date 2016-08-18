@@ -144,7 +144,7 @@ void installUpdates(bool downgrade)
 				continue;
 
 			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds != 0)
-				throw titleException(_FILE_, __LINE__, res, "Installing N3DS pack on O3DS will brick!");
+				throw titleException(_FILE_, __LINE__, res, "Installing N3DS pack on O3DS will always brick!");
 			if(ciaFileInfo.titleID == 0x0004013820000002L && is_n3ds != 1 && ciaFileInfo.version > 11872)
 				throw titleException(_FILE_, __LINE__, res, "Installing O3DS pack >6.0 on N3DS will always brick!");
 
@@ -214,12 +214,12 @@ void installUpdates(bool downgrade)
 										}
 
 									}
-				  			}
+								}
 
 							}
 
 						}
-	  			}
+					}
 
 		 		}
 			}
@@ -285,15 +285,15 @@ int main()
 
 	consoleInit(GFX_TOP, NULL);
 
-	printf("sysDowngrader with svchax\n\n");
+	printf("sysDowngrader\n\n");
 	printf("(A) update\n(Y) downgrade\n(X) test svchax\n(B) exit\n\n");
-	printf("Use the HOME button to exit the CIA version.\n");
-	printf("Updates cannot be aborted once started!\n\n\n");
+	printf("Use the (HOME) button to exit the CIA version.\n");
+	printf("The installation cannot be aborted once started!\n\n\n");
 	printf("Credits:\n");
-	printf(" + originally written by profi200\n");
-	printf(" + svchax written by aliaspider\n");
-	printf(" + svchax support by AngelSL\n");
-	printf(" + updated by Plailect\n\n");
+	printf(" + profi200\n");
+	printf(" + aliaspider\n");
+	printf(" + AngelSL\n");
+	printf(" + Plailect\n\n");
 
 
 	while(aptMainLoop())
