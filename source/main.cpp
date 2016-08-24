@@ -255,7 +255,7 @@ void installUpdates(bool downgrade)
 
 		 		}
 			}
-			svcSleepThread(10000000000000LL);
+			printf("\n\n\x1b[32mVerified /updates/ firmware files!\n\n\x1b[0m\n");
 		}
 
 	}
