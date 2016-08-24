@@ -129,7 +129,7 @@ void installUpdates(bool downgrade)
 	AM_TitleEntry ciaFileInfo;
 	fs::File f;
 
-	printf("Getting /updates/ information...\n\n");
+	printf("Getting firmware files information...\n\n");
 
 	for(auto it : filesDirs)
 	{
@@ -165,7 +165,7 @@ void installUpdates(bool downgrade)
 				}
 			}
 
-			printf("Getting /updates/ firmware version...\n\n");
+			printf("Getting firmware files version...\n\n");
 			printf("NATVE_FIRM (");
 
 			tmpStr.clear();
@@ -175,7 +175,7 @@ void installUpdates(bool downgrade)
 			printf(") is v");
 			printf("%i\n\n", ciaFileInfo.version);
 
-			printf("Verifying /updates/ firmware files...\n\n");
+			printf("Verifying firmware files...\n\n");
 
 			for(auto const &firmVersionMap : firmVersions) {
 
@@ -255,7 +255,8 @@ void installUpdates(bool downgrade)
 
 		 		}
 			}
-			printf("\n\n\x1b[32mVerified /updates/ firmware files!\n\n\x1b[0m\n");
+			printf("\n\n\x1b[32mVerified firmware files successfully!\n\n\x1b[0m\n\n");
+			printf("Installing firmware files...")
 		}
 
 	}

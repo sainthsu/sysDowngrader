@@ -1,6 +1,6 @@
 ## sysDowngrader
 
-A quick tool for manually updating a 3DS using CIA files.
+A quick tool for manually downgrading a 3DS using CIA files.
 
 This is not intended for installing anything else! You also should strictly avoid updating single titles because this also can lead to bricks!
 
