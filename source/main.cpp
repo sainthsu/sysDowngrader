@@ -26,6 +26,7 @@
 #include "misc.h"
 #include "title.h"
 #include "hashes.h"
+#include "sha256.h"
 
 #define _FILE_ "main.cpp" // Replacement for __FILE__ without the path
 
@@ -128,7 +129,7 @@ void installUpdates(bool downgrade)
 	AM_TitleEntry ciaFileInfo;
 	fs::File f;
 
-	printf("Getting CIA file informations...\n\n");
+	printf("Getting /updates/ information...\n\n");
 
 	for(auto it : filesDirs)
 	{
@@ -172,9 +173,9 @@ void installUpdates(bool downgrade)
 			printf("%s", &tmpStr);
 
 			printf(") is v");
-			printf("%i\n", ciaFileInfo.version);
+			printf("%i\n\n", ciaFileInfo.version);
 
-			printf("Verifying /updates/ firmware files...\n");
+			printf("Verifying /updates/ firmware files...\n\n");
 
 			for(auto const &firmVersionMap : firmVersions) {
 
@@ -203,11 +204,42 @@ void installUpdates(bool downgrade)
 
 												tmpStr.clear();
 												utf16_to_utf8((u8*) &tmpStr, (u16*) it4.name.c_str(), 255);
-												printf("%s : ", &tmpStr);
 
-												printf("%s\n", regionVersionMap.second.find(&tmpStr)->second.c_str());
+                        fs::File ciaFile(u"/updates/" + it4.name, FS_OPEN_READ);
+                      	Buffer<u8> shaBuffer(MAX_BUF_SIZE, false);
+												u32 blockSize;
+                      	u64 ciaSize, offset = 0;
+                      	ciaSize = ciaFile.size();
+												SHA256 sha256stream;
 
-												//check file against hashes here
+												sha256stream.reset();
+
+												for(u32 i=0; i<=ciaSize / MAX_BUF_SIZE; i++)
+												{
+													blockSize = ((ciaSize - offset<MAX_BUF_SIZE) ? ciaSize - offset : MAX_BUF_SIZE);
+
+													if(blockSize>0)
+													{
+														try
+														{
+															ciaFile.read(&shaBuffer, blockSize);
+														} catch(fsException& e)
+														{
+															throw titleException(_FILE_, __LINE__, res, "Could not read file!");
+														}
+
+														sha256stream.add(&shaBuffer, blockSize);
+														offset += blockSize;
+													}
+												}
+
+												printf("%s", &tmpStr);
+
+												if(sha256stream.getHash() != regionVersionMap.second.find(&tmpStr)->second) {
+													throw titleException(_FILE_, __LINE__, res, "\x1b[31mHash mismatch! File is corrupt or incorrect!\x1b[0m\n\n");
+												} else {
+													printf("\x1b[32m  Verified\x1b[0m\n");
+												}
 
 											}
 
@@ -261,8 +293,7 @@ void installUpdates(bool downgrade)
 		if(nativeFirm)
 		{
 			printf("NATIVE_FIRM         ");
-		} else
-		{
+		} else {
 			tmpStr.clear();
 			utf16_to_utf8((u8*) &tmpStr, (u16*) it.name.c_str(), 255);
 
