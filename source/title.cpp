@@ -39,7 +39,7 @@ std::vector<TitleInfo> getTitleInfos(FS_MediaType mediaType)
 	TitleInfo tmpTitleInfo;
 
 	u32 archiveLowPath[4] = {0, 0, mediaType, 0};
-	const FS_Archive iconArchive = {0x2345678A, {PATH_BINARY, 0x10, (u8*)archiveLowPath}};
+	//const FS_Archive iconArchive = {0x2345678A, {PATH_BINARY, 0x10, (u8*)archiveLowPath}};
 	const u32 fileLowPath[5] = {0, 0, 2, 0x6E6F6369, 0};
 	const FS_Path filePath = {PATH_BINARY, 0x14, (const u8*)fileLowPath};
 
@@ -66,7 +66,7 @@ std::vector<TitleInfo> getTitleInfos(FS_MediaType mediaType)
 		// Copy the title ID into our archive low path
 		memcpy(archiveLowPath, &titleIdList[i], 8);
 		icon.clear();
-		if(!FSUSER_OpenFileDirectly(&fileHandle, iconArchive, filePath, FS_OPEN_READ, 0))
+		if(!FSUSER_OpenFileDirectly(&fileHandle, ARCHIVE_SAVEDATA_AND_CONTENT, {PATH_BINARY, 0x10, (u8*)archiveLowPath}, filePath, FS_OPEN_READ, 0))
 		{
 			// Nintendo decided to release a title with an icon entry but with size 0 so this will fail.
 			// Ignoring errors because of this here.
@@ -135,91 +135,4 @@ void deleteTitle(FS_MediaType mediaType, u64 titleID)
 	if(titleID>>32 & 0xFFFF) {if((res = AM_DeleteTitle(mediaType, titleID))) throw titleException(_FILE_, __LINE__, res, "Failed to delete system title!");} // Who likes ambiguous else?
 	// Normal app
 	else if((res = AM_DeleteAppTitle(mediaType, titleID))) throw titleException(_FILE_, __LINE__, res, "Failed to delete app title!");
-}
-
-
-// TODO: Find a way to translate the title ID to an appID without lookup tables (this looks ugly :|)
-//       Fix the weird freeze which sometimes happens at applet launch
-bool launchTitle(FS_MediaType mediaType, u8 flags, u64 titleID)
-{
-	Result res;
-	u8 isN3DS;
-	u32 appID;
-	const u32 appIDTable[9] = {0x101, 0x103, 0x110, 0x112, 0x113, 0x114, 0x115, 0x116, 0x117};
-	const u32 tIDTableOld3DS[9][3] = {
-		{0x8202, 0x8F02, 0x9802}, // Home menu
-		{0x8102, 0x8102, 0x8102}, // Alternate Menu
-		{0x8402, 0x9002, 0x9902}, // Camera Applet
-		{0x8D02, 0x9602, 0x9F02}, // Friends list applet
-		{0x8702, 0x9302, 0x9C02}, // Game notes applet
-		{0x8802, 0x9402, 0x9D02}, // Internet browser
-		{0x8602, 0x9202, 0x9B02}, // Instruction manual applet
-		{0x8E02, 0x9702, 0xA002}, // Notifications applet
-		{0xBC02, 0xBD02, 0xBE02}}; // Miiverse applet
-	const u32 tIDTableNew3DS[9][3] = {
-		{0x8202, 0x8F02, 0x9802}, // Home menu
-		{0x8102, 0x8102, 0x8102}, // Alternate Menu
-		{0x8402, 0x9002, 0x9902}, // Camera Applet
-		{0x8D02, 0x9602, 0x9F02}, // Friends list applet
-		{0x8702, 0x9302, 0x9C02}, // Game notes applet
-		{0x20008802, 0x20009402, 0x20009D02}, // New 3DS internet browser
-		{0x8602, 0x9202, 0x9B02}, // Instruction manual applet
-		{0x8E02, 0x9702, 0xA002}, // Notifications applet
-		{0xBC02, 0xBD02, 0xBE02}}; // Miiverse applet
-
-
-
-	APT_CheckNew3DS(&isN3DS);
-	const u32 (*tIDTable)[3] = ((isN3DS) ? tIDTableNew3DS : tIDTableOld3DS);
-
-
-	aptOpenSession();
-
-	if(titleID>>32 == 0x40030) // Applet
-	{
-		// Search the the title ID lower word in our title ID table
-		for(u32 i=0; i<9; i++)
-		{
-			for(u32 j=0; j<3; j++)
-			{
-				if(tIDTable[i][j] == ((u32)titleID))
-				{
-					appID = appIDTable[i];
-					goto found;
-				}
-			}
-		}
-		return false; // Wrong title ID or applet can't be launched/is not in our list
-
-		found:
-
-
-		if((res = APT_PrepareToStartSystemApplet((NS_APPID)appID)))
-		{
-			aptCloseSession();
-			throw titleException(_FILE_, __LINE__, res, "Failed to prepare for system applet start!");
-		}
-		if((res = APT_StartSystemApplet((NS_APPID)appID, 0, 0, nullptr)))
-		{
-			aptCloseSession();
-			throw titleException(_FILE_, __LINE__, res, "Failed to start system applet!");
-		}
-		aptSetStatus(APP_EXITING);
-	}
-	else // App
-	{
-		if((res = APT_PrepareToDoAppJump(flags, titleID, mediaType)))
-		{
-			aptCloseSession();
-			throw titleException(_FILE_, __LINE__, res, "Failed to prepare for app start!");
-		}
-		if((res = APT_DoAppJump(0, 0, nullptr, nullptr)))
-		{
-			aptCloseSession();
-			throw titleException(_FILE_, __LINE__, res, "Failed to start app!");
-		}
-	}
-
-	aptCloseSession();
-	return true; // Applet launch was successful
 }

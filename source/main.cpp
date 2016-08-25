@@ -26,7 +26,6 @@
 #include "misc.h"
 #include "title.h"
 #include "hashes.h"
-#include "sha256.h"
 
 #define _FILE_ "main.cpp" // Replacement for __FILE__ without the path
 
@@ -98,6 +97,21 @@ extern "C"
 	}
 }
 
+// thanks TuxSH!
+bool compareHashToString(u8* hash, std::string str)
+{
+	const char digits[] = "0123456789abcdef";
+
+	u32 nbDigits = str.size();
+
+	for(u32 i = 0; i < nbDigits; i++)
+	{
+		if(digits[(hash[i/2] >> (4 * ((i+1) % 2))) % 16] != str[i]) return false;
+	}
+
+	return true;
+}
+
 // Find title and compare versions. Returns CIA file version - installed title version
 int versionCmp(std::vector<TitleInfo>& installedTitles, u64& titleID, u16 version)
 {
@@ -120,7 +134,7 @@ void installUpdates(bool downgrade)
 	std::vector<TitleInfo> installedTitles = getTitleInfos(MEDIATYPE_NAND);
 	std::vector<TitleInstallInfo> titles;
 
-	u8 is_n3ds = 0;
+	bool is_n3ds = 0;
 	APT_CheckNew3DS(&is_n3ds);
 
 	Buffer<char> tmpStr(256);
@@ -207,12 +221,10 @@ void installUpdates(bool downgrade)
 
                         fs::File ciaFile(u"/updates/" + it4.name, FS_OPEN_READ);
                       	Buffer<u8> shaBuffer(MAX_BUF_SIZE, false);
+												u8 hash;
 												u32 blockSize;
                       	u64 ciaSize, offset = 0;
                       	ciaSize = ciaFile.size();
-												SHA256 sha256stream;
-
-												sha256stream.reset();
 
 												for(u32 i=0; i<=ciaSize / MAX_BUF_SIZE; i++)
 												{
@@ -227,15 +239,16 @@ void installUpdates(bool downgrade)
 														{
 															throw titleException(_FILE_, __LINE__, res, "Could not read file!");
 														}
-
-														sha256stream.add(&shaBuffer, blockSize);
 														offset += blockSize;
 													}
 												}
 
 												printf("%s", &tmpStr);
 
-												if(sha256stream.getHash() != regionVersionMap.second.find(&tmpStr)->second) {
+												if((res = FSUSER_UpdateSha256Context(&shaBuffer, ciaSize, &hash)))
+													throw titleException(_FILE_, __LINE__, res, "Could not generate hash!");
+
+												if(!compareHashToString(&hash, regionVersionMap.second.find(&tmpStr)->second)){
 													throw titleException(_FILE_, __LINE__, res, "\x1b[31mHash mismatch! File is corrupt or incorrect!\x1b[0m\n\n");
 												} else {
 													printf("\x1b[32m  Verified\x1b[0m\n");
@@ -373,9 +386,7 @@ int main()
 
 					svcSleepThread(10000000000LL);
 
-					aptOpenSession();
 					APT_HardwareResetAsync();
-					aptCloseSession();
 					once = true;
 				}
 				catch(fsException& e)
