@@ -66,7 +66,7 @@ std::vector<TitleInfo> getTitleInfos(FS_MediaType mediaType)
 		// Copy the title ID into our archive low path
 		memcpy(archiveLowPath, &titleIdList[i], 8);
 		icon.clear();
-		if(!FSUSER_OpenFileDirectly(&fileHandle, ARCHIVE_SAVEDATA_AND_CONTENT, {PATH_BINARY, 0x10, (u8*)archiveLowPath}, filePath, FS_OPEN_READ, 0))
+		if(!FSUSER_OpenFileDirectly(&fileHandle, ARCHIVE_SAVEDATA_AND_CONTENT, (FS_Path){PATH_BINARY, 0x10, (u8*)archiveLowPath}, filePath, FS_OPEN_READ, 0))
 		{
 			// Nintendo decided to release a title with an icon entry but with size 0 so this will fail.
 			// Ignoring errors because of this here.

@@ -389,12 +389,12 @@ int main()
 					APT_HardwareResetAsync();
 					once = true;
 				}
-				catch(fsException& e)
-				{
-					printf("\n%s\n", e.what());
-					printf("Did you store the update files in '/updates'?");
-					once = true;
-				}
+				// catch(fsException& e)
+				// {
+				// 	printf("\n%s\n", e.what());
+				// 	printf("Did you store the update files in '/updates'?");
+				// 	once = true;
+				// }
 				catch(titleException& e)
 				{
 					printf("\n%s\n", e.what());
