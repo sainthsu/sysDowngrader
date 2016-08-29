@@ -81,7 +81,7 @@ bool sortTitlesLowToHigh(const TitleInstallInfo &a, const TitleInstallInfo &b) {
 // Fix compile error. This should be properly initialized if you fiddle with the title stuff!
 u8 sysLang = 0;
 
-// Override the default service exit functions
+// Override the default service init/exit functions
 extern "C"
 {
 	void __appExit()
@@ -134,6 +134,8 @@ void installUpdates(bool downgrade)
 	std::vector<TitleInfo> installedTitles = getTitleInfos(MEDIATYPE_NAND);
 	std::vector<TitleInstallInfo> titles;
 
+	bool successfulCheck = 0;
+
 	bool is_n3ds = 0;
 	APT_CheckNew3DS(&is_n3ds);
 
@@ -158,12 +160,12 @@ void installUpdates(bool downgrade)
 			if(ciaFileInfo.titleID != 0x0004013800000002LL && ciaFileInfo.titleID != 0x0004013820000002L)
 				continue;
 
-			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds != 0)
+			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds)
 				throw titleException(_FILE_, __LINE__, res, "Installing N3DS pack on O3DS will always brick!");
-			if(ciaFileInfo.titleID == 0x0004013820000002L && is_n3ds != 1 && ciaFileInfo.version > 11872)
-				throw titleException(_FILE_, __LINE__, res, "Installing O3DS pack >6.0 on N3DS will always brick!");
 
-			if(ciaFileInfo.titleID == 0x0004013820000002L && is_n3ds != 1 && ciaFileInfo.version < 11872){
+			if(ciaFileInfo.titleID == 0x0004013820000002L && !is_n3ds && ciaFileInfo.version > 11872)
+				throw titleException(_FILE_, __LINE__, res, "Installing O3DS pack >6.0 on N3DS will always brick!");
+			if(ciaFileInfo.titleID == 0x0004013820000002L && !is_n3ds && ciaFileInfo.version < 11872){
 				printf("Installing O3DS pack on N3DS will brick unless you swap the NCSD and crypto slot!\n");
 				printf("!! DO NOT CONTINUE UNLESS !!\n!! YOU ARE ON A9LH OR REDNAND !!\n\n");
 				printf("(A) continue\n(a) cancel\n\n");
@@ -219,12 +221,12 @@ void installUpdates(bool downgrade)
 												tmpStr.clear();
 												utf16_to_utf8((u8*) &tmpStr, (u16*) it4.name.c_str(), 255);
 
-        											fs::File ciaFile(u"/updates/" + it4.name, FS_OPEN_READ);
-                      										Buffer<u8> shaBuffer(MAX_BUF_SIZE, false);
+        								fs::File ciaFile(u"/updates/" + it4.name, FS_OPEN_READ);
+                      	Buffer<u8> shaBuffer(MAX_BUF_SIZE, false);
 												u8 hash;
 												u32 blockSize;
-                      										u64 ciaSize, offset = 0;
-                      										ciaSize = ciaFile.size();
+                      	u64 ciaSize, offset = 0;
+                      	ciaSize = ciaFile.size();
 
 												for(u32 i=0; i<=ciaSize / MAX_BUF_SIZE; i++)
 												{
@@ -252,6 +254,7 @@ void installUpdates(bool downgrade)
 													throw titleException(_FILE_, __LINE__, res, "\x1b[31mHash mismatch! File is corrupt or incorrect!\x1b[0m\n\n");
 												} else {
 													printf("\x1b[32m  Verified\x1b[0m\n");
+													successfulCheck = 1;
 												}
 
 											}
@@ -268,8 +271,15 @@ void installUpdates(bool downgrade)
 
 		 		}
 			}
-			printf("\n\n\x1b[32mVerified firmware files successfully!\n\n\x1b[0m\n\n");
+
+			if(successfulCheck){
+				printf("\n\n\x1b[32mVerified firmware files successfully!\n\n\x1b[0m\n\n");
+			} else {
+				throw titleException(_FILE_, __LINE__, res, "\x1b[31mCould not successfully verify firmware files!x1b[0m\n\n");
+			}
+
 			printf("Installing firmware files...");
+
 		}
 
 	}
@@ -323,7 +333,11 @@ void installUpdates(bool downgrade)
 
 int main()
 {
+	srvInit();
 	gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
+	fsInit();
+	sdmcArchiveInit();
+	amInit();
 
 	bool once = false;
 	int mode;
@@ -389,12 +403,12 @@ int main()
 					APT_HardwareResetAsync();
 					once = true;
 				}
-				// catch(fsException& e)
-				// {
-				// 	printf("\n%s\n", e.what());
-				// 	printf("Did you store the update files in '/updates'?");
-				// 	once = true;
-				// }
+				catch(fsException& e)
+				{
+					printf("\n%s\n", e.what());
+					printf("Did you store the update files in '/updates'?");
+					once = true;
+				}
 				catch(titleException& e)
 				{
 					printf("\n%s\n", e.what());
