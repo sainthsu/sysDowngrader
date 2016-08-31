@@ -1,7 +1,7 @@
 BasicInfo:
-  Title                   : "udtr"
+  Title                   : "dgdr"
   CompanyCode             : "00"
-  ProductCode             : "CTR-N-UDTR"
+  ProductCode             : "CTR-N-DGDR"
   ContentType             : Application # Application / SystemUpdate / Manual / Child / Trial
   Logo                    : Nintendo # Nintendo / Licensed / Distributed / iQue / iQueForSystem
 
@@ -30,6 +30,7 @@ Option:
 AccessControlInfo:
   FileSystemAccess:
    - DirectSdmc
+   - CategorySystemApplication
   IoAccessControl:
 
   IdealProcessor                : 0

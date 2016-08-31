@@ -221,11 +221,11 @@ void installUpdates(bool downgrade)
 												tmpStr.clear();
 												utf16_to_utf8((u8*) &tmpStr, (u16*) it4.name.c_str(), 255);
 
-        								fs::File ciaFile(u"/updates/" + it4.name, FS_OPEN_READ);
+												fs::File ciaFile(u"/updates/" + it4.name, FS_OPEN_READ);
 												Buffer<u8> shaBuffer(MAX_BUF_SIZE, false);
-												u8 hash;
+												u8 hash[32];
 												u32 blockSize;
-												u64 ciaSize, offset = 0;
+												u32 ciaSize, offset = 0;
 												ciaSize = ciaFile.size();
 
 												for(u32 i=0; i<=ciaSize / MAX_BUF_SIZE; i++)
@@ -247,10 +247,10 @@ void installUpdates(bool downgrade)
 
 												printf("%s", &tmpStr);
 
-												if((res = FSUSER_UpdateSha256Context(&shaBuffer, ciaSize, &hash)))
+												if((res = FSUSER_UpdateSha256Context(&shaBuffer, ciaSize, hash)))
 													throw titleException(_FILE_, __LINE__, res, "Could not generate hash!");
 
-												if(!compareHashToString(&hash, regionVersionMap.second.find(&tmpStr)->second)){
+												if(!compareHashToString(hash, regionVersionMap.second.find(&tmpStr)->second)){
 													throw titleException(_FILE_, __LINE__, res, "\x1b[31mHash mismatch! File is corrupt or incorrect!\x1b[0m\n\n");
 												} else {
 													printf("\x1b[32m  Verified\x1b[0m\n");
