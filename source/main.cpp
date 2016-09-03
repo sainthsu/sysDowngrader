@@ -97,19 +97,22 @@ extern "C"
 	}
 }
 
-// thanks TuxSH!
+// thanks chaoskagami!
+#define HASH_LEN 32 // Sha256
 bool compareHashToString(u8* hash, std::string str)
 {
-	const char digits[] = "0123456789abcdef";
+    const char digits[] = "0123456789abcdef";
+    const char* cstr = str.c_str();
 
-	u32 nbDigits = str.size();
+    for(u32 i=0; i < HASH_LEN; i++, cstr += 2) {
+        char dump[2];
+        dump[0] = digits[(hash[i] >> 4) & 0xf];
+        dump[1] = digits[hash[i] & 0xf];
+        if (dump[0] != cstr[0] || dump[1] != cstr[1])
+            return false;
+    }
 
-	for(u32 i = 0; i < nbDigits; i++)
-	{
-		if(digits[(hash[i/2] >> (4 * ((i+1) % 2))) % 16] != str[i]) return false;
-	}
-
-	return true;
+    return true;
 }
 
 // Find title and compare versions. Returns CIA file version - installed title version
@@ -251,7 +254,8 @@ void installUpdates(bool downgrade)
 													throw titleException(_FILE_, __LINE__, res, "Could not generate hash!");
 
 												if(!compareHashToString(hash, regionVersionMap.second.find(&tmpStr)->second)){
-													throw titleException(_FILE_, __LINE__, res, "\x1b[31mHash mismatch! File is corrupt or incorrect!\x1b[0m\n\n");
+													//throw titleException(_FILE_, __LINE__, res, "\x1b[31mHash mismatch! File is corrupt or incorrect!\x1b[0m\n\n");
+													printf("FAIL!\n");
 												} else {
 													printf("\x1b[32m  Verified\x1b[0m\n");
 													successfulCheck = 1;
@@ -262,8 +266,8 @@ void installUpdates(bool downgrade)
 										}
 
 									}
-								}
 
+								}
 							}
 
 						}
