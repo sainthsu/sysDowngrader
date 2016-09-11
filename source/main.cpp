@@ -135,7 +135,6 @@ void installUpdates(bool downgrade)
 	{
 		if(!it.isDir)
 		{
-			if(it.name[0] == u'.') continue;
 
 			f.open(u"/updates/" + it.name, FS_OPEN_READ);
 			if((res = AM_GetCiaFileInfo(MEDIATYPE_NAND, &ciaFileInfo, f.getFileHandle())))
@@ -144,12 +143,12 @@ void installUpdates(bool downgrade)
 			if(ciaFileInfo.titleID != 0x0004013800000002LL && ciaFileInfo.titleID != 0x0004013820000002L)
 				continue;
 
-			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds != 0)
+			if(ciaFileInfo.titleID == 0x0004013820000002LL && is_n3ds == 0)
 				throw titleException(_FILE_, __LINE__, res, "Installing N3DS pack on O3DS will always brick!");
-			if(ciaFileInfo.titleID == 0x0004013820000002L && is_n3ds != 1 && ciaFileInfo.version > 11872)
+			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds == 1 && ciaFileInfo.version > 11872)
 				throw titleException(_FILE_, __LINE__, res, "Installing O3DS pack >6.0 on N3DS will always brick!");
 
-			if(ciaFileInfo.titleID == 0x0004013820000002L && is_n3ds != 1 && ciaFileInfo.version < 11872){
+			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds == 1 && ciaFileInfo.version < 11872){
 				printf("Installing O3DS pack on N3DS will brick unless you swap the NCSD and crypto slot!\n");
 				printf("!! DO NOT CONTINUE UNLESS !!\n!! YOU ARE ON A9LH OR REDNAND !!\n\n");
 				printf("(A) continue\n(a) cancel\n\n");
@@ -166,7 +165,7 @@ void installUpdates(bool downgrade)
 			}
 
 			printf("Getting firmware files version...\n\n");
-			printf("NATVE_FIRM (");
+			printf("NATIVE_FIRM (");
 
 			tmpStr.clear();
 			utf16_to_utf8((u8*) &tmpStr, (u16*) it.name.c_str(), 255);
@@ -376,17 +375,20 @@ int main()
 					aptOpenSession();
 					APT_HardwareResetAsync();
 					aptCloseSession();
+
 					once = true;
 				}
 				catch(fsException& e)
 				{
 					printf("\n%s\n", e.what());
-					printf("Did you store the update files in '/updates'?");
+					printf("Did you store the update files in '/updates'?\n");
+					printf("Please reboot.");
 					once = true;
 				}
 				catch(titleException& e)
 				{
 					printf("\n%s\n", e.what());
+					printf("Please reboot.");
 					once = true;
 				}
 			}
