@@ -337,11 +337,7 @@ void installUpdates(bool downgrade)
 
 int main()
 {
-	srvInit();
 	gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
-	fsInit();
-	sdmcArchiveInit();
-	amInit();
 
 	bool once = false;
 	int mode;
@@ -404,18 +400,23 @@ int main()
 
 					svcSleepThread(10000000000LL);
 
+					aptOpenSession();
 					APT_HardwareResetAsync();
+					aptCloseSession();
+
 					once = true;
 				}
 				catch(fsException& e)
 				{
 					printf("\n%s\n", e.what());
-					printf("Did you store the update files in '/updates'?");
+					printf("Did you store the update files in '/updates'?\n");
+					printf("Please reboot.");
 					once = true;
 				}
 				catch(titleException& e)
 				{
 					printf("\n%s\n", e.what());
+					printf("Please reboot.");
 					once = true;
 				}
 			}
