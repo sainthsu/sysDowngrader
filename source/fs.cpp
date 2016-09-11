@@ -427,7 +427,9 @@ namespace fs
 							if(found == std::u16string::npos) break;
 							if(foundOld > 0) foundOld++; // Skip the separator
 							if(file.length() < found-foundOld) continue;
-              if(file.compare(file.length()-(found-foundOld), found-foundOld, filter, foundOld, found-foundOld) == 0) filesFolders.push_back(DirEntry((char16_t*)entries[i].name, entries[i].attributes & FS_ATTRIBUTE_DIRECTORY, entries[i].fileSize));
+              if(file.compare(file.length()-(found-foundOld), found-foundOld, filter, foundOld, found-foundOld) == 0 && file[0] != u'.') {
+								filesFolders.push_back(DirEntry((char16_t*)entries[i].name, entries[i].attributes & FS_ATTRIBUTE_DIRECTORY, entries[i].fileSize));
+							}
 							foundOld = found;
 						}
 					}

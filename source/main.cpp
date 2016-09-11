@@ -426,3 +426,148 @@ int main()
 	}
 	return 0;
 }
+=======
+		}
+
+	}
+
+	for(auto it : filesDirs)
+	{
+		if(!it.isDir)
+		{
+			// Quick and dirty hack to detect these pesky
+			// attribute files OSX creates.
+			// This should rather be added to the
+			// filter rules later.
+			if(it.name[0] == u'.') continue;
+
+			f.open(u"/updates/" + it.name, FS_OPEN_READ);
+			if((res = AM_GetCiaFileInfo(MEDIATYPE_NAND, &ciaFileInfo, f.getFileHandle()))) throw titleException(_FILE_, __LINE__, res, "Failed to get CIA file info!");
+
+			int cmpResult = versionCmp(installedTitles, ciaFileInfo.titleID, ciaFileInfo.version);
+			if((downgrade && cmpResult != 0) || (cmpResult > 0))
+			{
+				installInfo.name = it.name;
+				installInfo.entry = ciaFileInfo;
+				installInfo.requiresDelete = downgrade && cmpResult < 0;
+
+				titles.push_back(installInfo);
+			}
+		}
+	}
+
+	std::sort(titles.begin(), titles.end(), downgrade ? sortTitlesLowToHigh : sortTitlesHighToLow);
+
+	for(auto it : titles)
+	{
+		bool nativeFirm = it.entry.titleID == 0x0004013800000002LL || it.entry.titleID == 0x0004013820000002LL;
+		if(nativeFirm)
+		{
+			printf("NATIVE_FIRM         ");
+		} else {
+			tmpStr.clear();
+			utf16_to_utf8((u8*) &tmpStr, (u16*) it.name.c_str(), 255);
+
+			printf("%s", &tmpStr);
+		}
+
+		if(it.requiresDelete) deleteTitle(MEDIATYPE_NAND, it.entry.titleID);
+		installCia(u"/updates/" + it.name, MEDIATYPE_NAND);
+		if(nativeFirm && (res = AM_InstallFirm(it.entry.titleID))) throw titleException(_FILE_, __LINE__, res, "Failed to install NATIVE_FIRM!");
+		printf("\x1b[32m  Installed\x1b[0m\n");
+	}
+}
+
+int main()
+{
+	gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
+
+	bool once = false;
+	int mode;
+
+	consoleInit(GFX_TOP, NULL);
+
+	printf("sysDowngrader\n\n");
+	printf("(A) update\n(Y) downgrade\n(X) test svchax\n(B) exit\n\n");
+	printf("Use the (HOME) button to exit the CIA version.\n");
+	printf("The installation cannot be aborted once started!\n\n\n");
+	printf("Credits:\n");
+	printf(" + profi200\n");
+	printf(" + aliaspider\n");
+	printf(" + AngelSL\n");
+	printf(" + Plailect\n\n");
+
+
+	while(aptMainLoop())
+	{
+		hidScanInput();
+
+
+		if(hidKeysDown() & KEY_B)
+			break;
+		if(!once)
+		{
+			if(hidKeysDown() & (KEY_A | KEY_Y | KEY_X))
+			{
+				try
+				{
+
+					if ((bool)(hidKeysDown() & KEY_Y)) {
+						mode = 0;
+					} else if ((bool)(hidKeysDown() & KEY_A)) {
+						mode = 1;
+					} else {
+						mode = 2;
+					}
+
+					consoleClear();
+
+					if (getAMu() != 0) {
+						printf("\x1b[31mDid not get am:u handle, please reboot\x1b[0m\n\n");
+						while (aptMainLoop()) {
+							svcSleepThread(10000000000LL);
+						}
+      		}
+
+					if (mode == 0) {
+						printf("Beginning downgrade...\n\n");
+						installUpdates(true);
+						printf("\n\nUpdates installed; rebooting in 10 seconds...\n");
+					} else if (mode == 1) {
+						printf("Beginning update...\n\n");
+						installUpdates(false);
+						printf("\n\nUpdates installed; rebooting in 10 seconds...\n");
+					} else {
+						printf("Tested svchax; rebooting in 10 seconds...\n");
+					}
+
+					svcSleepThread(10000000000LL);
+
+					aptOpenSession();
+					APT_HardwareResetAsync();
+					aptCloseSession();
+
+					once = true;
+				}
+				catch(fsException& e)
+				{
+					printf("\n%s\n", e.what());
+					printf("Did you store the update files in '/updates'?\n");
+					printf("Please reboot.");
+					once = true;
+				}
+				catch(titleException& e)
+				{
+					printf("\n%s\n", e.what());
+					printf("Please reboot.");
+					once = true;
+				}
+			}
+		}
+		gfxFlushBuffers();
+		gfxSwapBuffers();
+		gspWaitForVBlank();
+	}
+	return 0;
+}
+>>>>>>> 5423d1a... fixed various bugs
