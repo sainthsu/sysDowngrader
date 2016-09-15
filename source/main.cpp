@@ -204,11 +204,11 @@ void installUpdates(bool downgrade)
 												tmpStr.clear();
 												utf16_to_utf8((u8*) &tmpStr, (u16*) it4.name.c_str(), 255);
 
-                        fs::File ciaFile(u"/updates/" + it4.name, FS_OPEN_READ);
-                      	Buffer<u8> shaBuffer(MAX_BUF_SIZE, false);
+                        									fs::File ciaFile(u"/updates/" + it4.name, FS_OPEN_READ);
+                      										Buffer<u8> shaBuffer(MAX_BUF_SIZE, false);
 												u32 blockSize;
-                      	u64 ciaSize, offset = 0;
-                      	ciaSize = ciaFile.size();
+                      										u64 ciaSize, offset = 0;
+                      										ciaSize = ciaFile.size();
 												SHA256 sha256stream;
 
 												sha256stream.reset();
