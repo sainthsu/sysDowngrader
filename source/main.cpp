@@ -255,7 +255,7 @@ void installUpdates(bool downgrade)
 		 		}
 			}
 			printf("\n\n\x1b[32mVerified firmware files successfully!\n\n\x1b[0m\n\n");
-			printf("Installing firmware files...");
+			printf("Installing firmware files...\n");
 		}
 
 	}
