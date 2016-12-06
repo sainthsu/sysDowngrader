@@ -320,12 +320,9 @@ int main()
 	printf("更多3DS汉化软件请访问youxijihe.com\n");
 	printf("(A) 升级\n(Y) 降级\n(X) 测试svchax\n(B) 退出\n\n");
 	printf("使用(HOME)键退出CIA版本.\n");
-	printf("一旦开始安装无法取消!\n\n");
+	printf("注意一旦开始安装将无法取消!\n\n");
 	printf("贡献名单:\n");
-	printf(" + profi200\n");
-	printf(" + aliaspider\n");
-	printf(" + AngelSL\n");
-	printf(" + Plailect\n");
+	printf(" + profi200,aliaspider,AngelSL,Plailect\n");
 	printf(" + youxijihe.com\n");
 
 

@@ -27,12 +27,12 @@ include $(DEVKITARM)/3ds_rules
 #     - icon.png
 #     - <libctru folder>/default_icon.png
 #---------------------------------------------------------------------------------
-TARGET		:=	sysDowngrader
+TARGET		:=	sysDowngraderCN
 BUILD		:=	build
 SOURCES		:=	source
 DATA		:=	data
 INCLUDES	:=	include
-APP_AUTHOR	:=	profi200
+APP_AUTHOR	:=	youxijihe.com
 APP_DESCRIPTION :=  sysDowngrader
 ICON		:=	app/icon48x48.png
 BNR_IMAGE	:=  app/banner.png
