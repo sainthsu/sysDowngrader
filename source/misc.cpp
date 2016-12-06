@@ -42,34 +42,34 @@ int getAMu() {
 
   Handle amHandle = 0;
 
-  printf("Checking for am:u...\n");
+  printf("检查am:u...\n");
   // verify am:u access
   srvGetServiceHandleDirect(&amHandle, "am:u");
   if (amHandle) {
     svcCloseHandle(amHandle);
-    printf("\x1b[32mGot am:u handle!\x1b[0m\n\n");
+    printf("\x1b[32m得到am:u服务!\x1b[0m\n\n");
     return 0;
   }
 
-  printf("Did not get am:u handle!\n\n");
-  printf("Attempting svchax...\n");
+  printf("无法获得am:u服务!\n\n");
+  printf("尝试svchax...\n");
 
   // try to get arm11
   svchax_init(true);
-  printf("Initted svchax...\n\n");
+  printf("初始化svchax...\n\n");
 
   aptInit();
 	fsInit();
 	sdmcArchiveInit();
 	amInit();
-  printf("Initted services...\n");
+  printf("初始化服务中...\n");
 
-  printf("Checking for am:u...\n\n");
+  printf("检测am:u...\n\n");
   // verify am:u access
   srvGetServiceHandleDirect(&amHandle, "am:u");
   if (amHandle) {
     svcCloseHandle(amHandle);
-    printf("\x1b[32mGot am:u handle!\x1b[0m\n\n");
+    printf("\x1b[32m获得am:u服务!\x1b[0m\n\n");
     return 0;
   }
   return 1;

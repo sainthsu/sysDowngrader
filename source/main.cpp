@@ -129,7 +129,7 @@ void installUpdates(bool downgrade)
 	AM_TitleEntry ciaFileInfo;
 	fs::File f;
 
-	printf("Getting firmware files information...\n\n");
+	printf("正在获取固件文件信息...\n\n");
 
 	for(auto it : filesDirs)
 	{
@@ -138,20 +138,20 @@ void installUpdates(bool downgrade)
 
 			f.open(u"/updates/" + it.name, FS_OPEN_READ);
 			if((res = AM_GetCiaFileInfo(MEDIATYPE_NAND, &ciaFileInfo, f.getFileHandle())))
-				throw titleException(_FILE_, __LINE__, res, "Failed to get CIA file info!");
+				throw titleException(_FILE_, __LINE__, res, "获取CIA文件信息失败!");
 
 			if(ciaFileInfo.titleID != 0x0004013800000002LL && ciaFileInfo.titleID != 0x0004013820000002L)
 				continue;
 
 			if(ciaFileInfo.titleID == 0x0004013820000002LL && is_n3ds == 0)
-				throw titleException(_FILE_, __LINE__, res, "Installing N3DS pack on O3DS will always brick!");
+				throw titleException(_FILE_, __LINE__, res, "在老3上安装N3D的包及易变砖!");
 			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds == 1 && ciaFileInfo.version > 11872)
-				throw titleException(_FILE_, __LINE__, res, "Installing O3DS pack >6.0 on N3DS will always brick!");
+				throw titleException(_FILE_, __LINE__, res, "在N3DS上安装>6.0的老3包及易变砖!");
 
 			if(ciaFileInfo.titleID == 0x0004013800000002LL && is_n3ds == 1 && ciaFileInfo.version < 11872){
-				printf("Installing O3DS pack on N3DS will brick unless you swap the NCSD and crypto slot!\n");
-				printf("!! DO NOT CONTINUE UNLESS !!\n!! YOU ARE ON A9LH OR REDNAND !!\n\n");
-				printf("(A) continue\n(a) cancel\n\n");
+				printf("在N3DS上安装老3包会变砖，除非你换了NCSD和加密!\n");
+				printf("!! 别继续了 !!\n!! 除非你是A9LH和REDNAND!!\n\n");
+				printf("(A) 继续\n(a) 取消\n\n");
 				while(aptMainLoop())
 				{
 					hidScanInput();
@@ -164,7 +164,7 @@ void installUpdates(bool downgrade)
 				}
 			}
 
-			printf("Getting firmware files version...\n\n");
+			printf("获取固件文件版本...\n\n");
 			printf("NATIVE_FIRM (");
 
 			tmpStr.clear();
@@ -174,7 +174,7 @@ void installUpdates(bool downgrade)
 			printf(") is v");
 			printf("%i\n\n", ciaFileInfo.version);
 
-			printf("Verifying firmware files...\n\n");
+			printf("验证固件文件...\n\n");
 
 			for(auto const &firmVersionMap : firmVersions) {
 
@@ -196,8 +196,8 @@ void installUpdates(bool downgrade)
 
 										if(&tmpStr == regionVersionMap.first) {
 
-											if(filesDirs.size() > regionVersionMap.second.size()) throw titleException(_FILE_, __LINE__, res, "Too many titles in /updates/ found!\n");
-											if(filesDirs.size() < regionVersionMap.second.size()) throw titleException(_FILE_, __LINE__, res, "Too few titles in /updates/ found!\n");
+											if(filesDirs.size() > regionVersionMap.second.size()) throw titleException(_FILE_, __LINE__, res, "/updates/中发现太多的title!\n");
+											if(filesDirs.size() < regionVersionMap.second.size()) throw titleException(_FILE_, __LINE__, res, "/updates/的title太少!\n");
 
 											for(auto it4 : filesDirs) {
 
@@ -224,7 +224,7 @@ void installUpdates(bool downgrade)
 															ciaFile.read(&shaBuffer, blockSize);
 														} catch(fsException& e)
 														{
-															throw titleException(_FILE_, __LINE__, res, "Could not read file!");
+															throw titleException(_FILE_, __LINE__, res, "无法读取文件!");
 														}
 
 														sha256stream.add(&shaBuffer, blockSize);
@@ -235,9 +235,9 @@ void installUpdates(bool downgrade)
 												printf("%s", &tmpStr);
 
 												if(sha256stream.getHash() != regionVersionMap.second.find(&tmpStr)->second) {
-													throw titleException(_FILE_, __LINE__, res, "\x1b[31mHash mismatch! File is corrupt or incorrect!\x1b[0m\n\n");
+													throw titleException(_FILE_, __LINE__, res, "\x1b[31m校对不匹配! 文件损害或错误!\x1b[0m\n\n");
 												} else {
-													printf("\x1b[32m  Verified\x1b[0m\n");
+													printf("\x1b[32m 验证\x1b[0m\n");
 												}
 
 											}
@@ -254,8 +254,8 @@ void installUpdates(bool downgrade)
 
 		 		}
 			}
-			printf("\n\n\x1b[32mVerified firmware files successfully!\n\n\x1b[0m\n\n");
-			printf("Installing firmware files...\n");
+			printf("\n\n\x1b[32m验证固件文件成功!\n\n\x1b[0m\n\n");
+			printf("安装固件文件中...\n");
 		}
 
 	}
@@ -271,7 +271,7 @@ void installUpdates(bool downgrade)
 			if(it.name[0] == u'.') continue;
 
 			f.open(u"/updates/" + it.name, FS_OPEN_READ);
-			if((res = AM_GetCiaFileInfo(MEDIATYPE_NAND, &ciaFileInfo, f.getFileHandle()))) throw titleException(_FILE_, __LINE__, res, "Failed to get CIA file info!");
+			if((res = AM_GetCiaFileInfo(MEDIATYPE_NAND, &ciaFileInfo, f.getFileHandle()))) throw titleException(_FILE_, __LINE__, res, "获取CIA文件信息失败!");
 
 			int cmpResult = versionCmp(installedTitles, ciaFileInfo.titleID, ciaFileInfo.version);
 			if((downgrade && cmpResult != 0) || (cmpResult > 0))
@@ -302,8 +302,8 @@ void installUpdates(bool downgrade)
 
 		if(it.requiresDelete) deleteTitle(MEDIATYPE_NAND, it.entry.titleID);
 		installCia(u"/updates/" + it.name, MEDIATYPE_NAND);
-		if(nativeFirm && (res = AM_InstallFirm(it.entry.titleID))) throw titleException(_FILE_, __LINE__, res, "Failed to install NATIVE_FIRM!");
-		printf("\x1b[32m  Installed\x1b[0m\n");
+		if(nativeFirm && (res = AM_InstallFirm(it.entry.titleID))) throw titleException(_FILE_, __LINE__, res, "安装NATIVE_FIRM失败!");
+		printf("\x1b[32m  已安装\x1b[0m\n");
 	}
 }
 
@@ -316,15 +316,17 @@ int main()
 
 	consoleInit(GFX_TOP, NULL);
 
-	printf("sysDowngrader\n\n");
-	printf("(A) update\n(Y) downgrade\n(X) test svchax\n(B) exit\n\n");
-	printf("Use the (HOME) button to exit the CIA version.\n");
-	printf("The installation cannot be aborted once started!\n\n\n");
-	printf("Credits:\n");
+	printf("sysDowngraderCN\n");
+	printf("更多3DS汉化软件请访问youxijihe.com\n");
+	printf("(A) 升级\n(Y) 降级\n(X) 测试svchax\n(B) 退出\n\n");
+	printf("使用(HOME)键退出CIA版本.\n");
+	printf("一旦开始安装无法取消!\n\n");
+	printf("贡献名单:\n");
 	printf(" + profi200\n");
 	printf(" + aliaspider\n");
 	printf(" + AngelSL\n");
-	printf(" + Plailect\n\n");
+	printf(" + Plailect\n");
+	printf(" + youxijihe.com\n");
 
 
 	while(aptMainLoop())
@@ -352,22 +354,22 @@ int main()
 					consoleClear();
 
 					if (getAMu() != 0) {
-						printf("\x1b[31mDid not get am:u handle, please reboot\x1b[0m\n\n");
+						printf("\x1b[31m无法获取 am:u 服务, 请重启\x1b[0m\n\n");
 						while (aptMainLoop()) {
 							svcSleepThread(10000000000LL);
 						}
       		}
 
 					if (mode == 0) {
-						printf("Beginning downgrade...\n\n");
+						printf("开始降级...\n\n");
 						installUpdates(true);
-						printf("\n\nUpdates installed; rebooting in 10 seconds...\n");
+						printf("\n\n安装成功; 将在10后重启...\n");
 					} else if (mode == 1) {
-						printf("Beginning update...\n\n");
+						printf("开始升级...\n\n");
 						installUpdates(false);
-						printf("\n\nUpdates installed; rebooting in 10 seconds...\n");
+						printf("\n\n安装成功; 将在10后重启......\n");
 					} else {
-						printf("Tested svchax; rebooting in 10 seconds...\n");
+						printf("测试svchax; 将在10后重启...\n");
 					}
 
 					svcSleepThread(10000000000LL);
@@ -381,14 +383,14 @@ int main()
 				catch(fsException& e)
 				{
 					printf("\n%s\n", e.what());
-					printf("Did you store the update files in '/updates'?\n");
-					printf("Please reboot.");
+					printf("是否已在'/updates'目录放置了升级文件?\n");
+					printf("请重启.");
 					once = true;
 				}
 				catch(titleException& e)
 				{
 					printf("\n%s\n", e.what());
-					printf("Please reboot.");
+					printf("请重启.");
 					once = true;
 				}
 			}

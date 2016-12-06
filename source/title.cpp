@@ -44,7 +44,7 @@ std::vector<TitleInfo> getTitleInfos(FS_MediaType mediaType)
 	const FS_Path filePath = {PATH_BINARY, 0x14, (const u8*)fileLowPath};
 
 
-	if((res = AM_GetTitleCount(mediaType, &count))) throw titleException(_FILE_, __LINE__, res, "Failed to get title count!");
+	if((res = AM_GetTitleCount(mediaType, &count))) throw titleException(_FILE_, __LINE__, res, "无法获取title数量!");
 
 
 	std::vector<TitleInfo> titleInfos; titleInfos.reserve(count);
@@ -54,8 +54,8 @@ std::vector<TitleInfo> getTitleInfos(FS_MediaType mediaType)
 
 
 	u32 throwaway;
-	if((res = AM_GetTitleList(&throwaway, mediaType, count, &titleIdList))) throw titleException(_FILE_, __LINE__, res, "Failed to get title ID list!");
-	if((res = AM_GetTitleInfo(mediaType, count, &titleIdList, &titleList))) throw titleException(_FILE_, __LINE__, res, "Failed to get title list!");
+	if((res = AM_GetTitleList(&throwaway, mediaType, count, &titleIdList))) throw titleException(_FILE_, __LINE__, res, "获取titleID列表失败!");
+	if((res = AM_GetTitleInfo(mediaType, count, &titleIdList, &titleList))) throw titleException(_FILE_, __LINE__, res, "获取title列表失败!");
 	for(u32 i=0; i<count; i++)
 	{
 		// Copy title ID, size and version directly
@@ -97,7 +97,7 @@ void installCia(const std::u16string& path, FS_MediaType mediaType, std::functio
 
 
 	ciaSize = ciaFile.size();
-	if((res = AM_StartCiaInstall(mediaType, &ciaHandle))) throw titleException(_FILE_, __LINE__, res, "Failed to start CIA installation!");
+	if((res = AM_StartCiaInstall(mediaType, &ciaHandle))) throw titleException(_FILE_, __LINE__, res, "无法开始CIA安装!");
 	cia.setFileHandle(ciaHandle); // Use the handle returned by AM
 
 
@@ -123,7 +123,7 @@ void installCia(const std::u16string& path, FS_MediaType mediaType, std::functio
 		}
 	}
 
-	if((res = AM_FinishCiaInstall(ciaHandle))) throw titleException(_FILE_, __LINE__, res, "Failed to finish CIA installation!");
+	if((res = AM_FinishCiaInstall(ciaHandle))) throw titleException(_FILE_, __LINE__, res, "无法停止CIA安装!");
 }
 
 
@@ -132,9 +132,9 @@ void deleteTitle(FS_MediaType mediaType, u64 titleID)
 	Result res;
 
 	// System app
-	if(titleID>>32 & 0xFFFF) {if((res = AM_DeleteTitle(mediaType, titleID))) throw titleException(_FILE_, __LINE__, res, "Failed to delete system title!");} // Who likes ambiguous else?
+	if(titleID>>32 & 0xFFFF) {if((res = AM_DeleteTitle(mediaType, titleID))) throw titleException(_FILE_, __LINE__, res, "删除系统title失败!");} // Who likes ambiguous else?
 	// Normal app
-	else if((res = AM_DeleteAppTitle(mediaType, titleID))) throw titleException(_FILE_, __LINE__, res, "Failed to delete app title!");
+	else if((res = AM_DeleteAppTitle(mediaType, titleID))) throw titleException(_FILE_, __LINE__, res, "删除应用title失败!");
 }
 
 
@@ -197,12 +197,12 @@ bool launchTitle(FS_MediaType mediaType, u8 flags, u64 titleID)
 		if((res = APT_PrepareToStartSystemApplet((NS_APPID)appID)))
 		{
 			aptCloseSession();
-			throw titleException(_FILE_, __LINE__, res, "Failed to prepare for system applet start!");
+			throw titleException(_FILE_, __LINE__, res, "无法准备启动系统小应用!");
 		}
 		if((res = APT_StartSystemApplet((NS_APPID)appID, 0, 0, nullptr)))
 		{
 			aptCloseSession();
-			throw titleException(_FILE_, __LINE__, res, "Failed to start system applet!");
+			throw titleException(_FILE_, __LINE__, res, "启动系统小程序失败!");
 		}
 		aptSetStatus(APP_EXITING);
 	}
@@ -211,12 +211,12 @@ bool launchTitle(FS_MediaType mediaType, u8 flags, u64 titleID)
 		if((res = APT_PrepareToDoAppJump(flags, titleID, mediaType)))
 		{
 			aptCloseSession();
-			throw titleException(_FILE_, __LINE__, res, "Failed to prepare for app start!");
+			throw titleException(_FILE_, __LINE__, res, "无法准备启动应用!");
 		}
 		if((res = APT_DoAppJump(0, 0, nullptr, nullptr)))
 		{
 			aptCloseSession();
-			throw titleException(_FILE_, __LINE__, res, "Failed to start app!");
+			throw titleException(_FILE_, __LINE__, res, "启动应用失败!");
 		}
 	}
 

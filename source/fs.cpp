@@ -69,7 +69,7 @@ namespace fs
 		if(FSUSER_OpenFile(&_fileHandle_, archive, filePath, openFlags & 3, 0))
 		{
 			if((res = FSUSER_OpenFile(&_fileHandle_, archive, filePath, openFlags, 0)))
-				throw fsException(_FILE_, __LINE__, res, "Failed to open file!");
+				throw fsException(_FILE_, __LINE__, res, "打开文件失败!");
 		}
 	}
 
@@ -84,21 +84,21 @@ namespace fs
 		if(FSUSER_OpenFile(&_fileHandle_, archive, lowPath, openFlags & 3, 0))
 		{
 			if((res = FSUSER_OpenFile(&_fileHandle_, archive, lowPath, openFlags, 0)))
-				throw fsException(_FILE_, __LINE__, res, "Failed to open file!");
+				throw fsException(_FILE_, __LINE__, res, "打开文件失败!");
 		}
 	}
 
 
 	u32 File::read(void *buf, u32 size)
 	{
-		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "No file opened!");
+		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "无文件被打开!");
 
 		u32 bytesRead;
 		Result res;
 
 
 		if((res = FSFILE_Read(_fileHandle_, &bytesRead, _offset_, buf, size)))
-			throw fsException(_FILE_, __LINE__, res, "Failed to read from file!");
+			throw fsException(_FILE_, __LINE__, res, "无法读取文件!");
 
 		_offset_ += bytesRead;
 		return bytesRead;
@@ -107,14 +107,14 @@ namespace fs
 
 	u32 File::write(const void *buf, u32 size)
 	{
-		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "No file opened!");
+		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "无文件被打开!");
 
 		u32 bytesWritten;
 		Result res;
 
 
 		if((res = FSFILE_Write(_fileHandle_, &bytesWritten, _offset_, buf, size, FS_WRITE_FLUSH)))
-			throw fsException(_FILE_, __LINE__, res, "Failed to write to file!");
+			throw fsException(_FILE_, __LINE__, res, "无法写入文件!");
 
 		_offset_ += bytesWritten;
 		return bytesWritten;
@@ -123,12 +123,12 @@ namespace fs
 
 	void File::flush()
 	{
-		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "No file opened!");
+		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "无文件被打开!");
 
     Result res;
 
 
-		if((res = FSFILE_Flush(_fileHandle_))) throw fsException(_FILE_, __LINE__, res, "Failed to flush file!");
+		if((res = FSFILE_Flush(_fileHandle_))) throw fsException(_FILE_, __LINE__, res, "刷新文件失败!");
 	}
 
 
@@ -150,13 +150,13 @@ namespace fs
 
 	u64 File::size()
 	{
-		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "No file opened!");
+		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "无文件被打开!");
 
 		u64 tmp;
 		Result res;
 
 
-		if((res = FSFILE_GetSize(_fileHandle_, &tmp))) throw fsException(_FILE_, __LINE__, res, "Failed to get file size!");
+		if((res = FSFILE_GetSize(_fileHandle_, &tmp))) throw fsException(_FILE_, __LINE__, res, "无法获取文件大小!");
 
 		return tmp;
 	}
@@ -164,19 +164,19 @@ namespace fs
 
 	void File::setSize(const u64 size)
 	{
-		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "No file opened!");
+		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "无文件被打开!");
 
 		Result res;
 
 
-		if((res = FSFILE_SetSize(_fileHandle_, size))) throw fsException(_FILE_, __LINE__, res, "Failed to set file size!");
+		if((res = FSFILE_SetSize(_fileHandle_, size))) throw fsException(_FILE_, __LINE__, res, "无法设置文件大小!");
 	}
 
 
 	// This can also be used to rename files
 	void File::move(const std::u16string& dst, FS_Archive& dstArchive)
 	{
-		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "No file opened!");
+		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "无文件被打开!");
 
 		u64 tmp = tell();
 
@@ -190,7 +190,7 @@ namespace fs
 
 	u64 File::copy(const std::u16string& dst, std::function<void (const std::u16string& file, u32 percent)> statusCallback, FS_Archive& dstArchive)
 	{
-		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "No file opened!");
+		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "无文件被打开!");
 
 		return copyFile(_path_, dst, statusCallback, *_archive_, dstArchive);
 	}
@@ -198,7 +198,7 @@ namespace fs
 
 	void File::del()
 	{
-		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "No file opened!");
+		if(!_fileHandle_) throw fsException(_FILE_, __LINE__, 0xDEADBEEF, "无文件被打开!");
 
 		close(); // Close file handle before we can delete this file
 		deleteFile(_path_, *_archive_);
@@ -218,7 +218,7 @@ namespace fs
 
 		if(!FSUSER_OpenFile(&fileHandle, archive, filePath, FS_OPEN_READ, 0))
 		{
-			if((res = FSFILE_Close(fileHandle))) throw fsException(_FILE_, __LINE__, res, "Failed to close file!");
+			if((res = FSFILE_Close(fileHandle))) throw fsException(_FILE_, __LINE__, res, "关闭文件失败!");
 			return true;
 		}
 
@@ -234,7 +234,7 @@ namespace fs
 
 
 		if((res = FSUSER_RenameFile(srcArchive, srcPath, dstArchive, dstPath)))
-			throw fsException(_FILE_, __LINE__, res, "Failed to move file!");
+			throw fsException(_FILE_, __LINE__, res, "无法移动文件!");
 	}
 
 
@@ -277,7 +277,7 @@ namespace fs
 		Result res;
 
 
-		if((res = FSUSER_DeleteFile(archive, srcPath))) throw fsException(_FILE_, __LINE__, res, "Failed to delete file!");
+		if((res = FSUSER_DeleteFile(archive, srcPath))) throw fsException(_FILE_, __LINE__, res, "删除文件失败!");
 	}
 
 
@@ -294,7 +294,7 @@ namespace fs
 
 		if(!FSUSER_OpenDirectory(&dirHandle, archive, dirPath))
 		{
-			if((res = FSDIR_Close(dirHandle))) throw fsException(_FILE_, __LINE__, res, "Failed to close directory!");
+			if((res = FSDIR_Close(dirHandle))) throw fsException(_FILE_, __LINE__, res, "无法关闭目录!");
 			return true;
 		}
 
@@ -311,11 +311,11 @@ namespace fs
 
 		if(!FSUSER_OpenDirectory(&dirHandle, archive, dirPath))
 		{
-			if((res = FSDIR_Close(dirHandle))) throw fsException(_FILE_, __LINE__, res, "Failed to close directory!");
+			if((res = FSDIR_Close(dirHandle))) throw fsException(_FILE_, __LINE__, res, "无法关闭目录!");
 			return;
 		}
 		if((res = FSUSER_CreateDirectory(archive, dirPath, 0)))
-			throw fsException(_FILE_, __LINE__, res, "Failed to create directory!");
+			throw fsException(_FILE_, __LINE__, res, "创建目录失败!");
 	}
 
 
@@ -399,7 +399,7 @@ namespace fs
 
 
 		if((res = FSUSER_OpenDirectory(&dirHandle, archive, dirPath)))
-			throw fsException(_FILE_, __LINE__, res, "Failed to open directory!");
+			throw fsException(_FILE_, __LINE__, res, "无法打开目录!");
 
 
 		Buffer<FS_DirectoryEntry> entries(32, false);
@@ -409,7 +409,7 @@ namespace fs
 		{
 			entriesRead = 0;
 			filesFolders.reserve(filesFolders.size()+32); // Save time by reserving enough mem
-			if((res = FSDIR_Read(dirHandle, &entriesRead, 32, &entries))) throw fsException(_FILE_, __LINE__, res, "Failed to read directory!");
+			if((res = FSDIR_Read(dirHandle, &entriesRead, 32, &entries))) throw fsException(_FILE_, __LINE__, res, "读取目录失败!");
 
 			if(useFilter)
 			{
@@ -458,7 +458,7 @@ namespace fs
 
 
 
-		if((res = FSDIR_Close(dirHandle))) throw fsException(_FILE_, __LINE__, res, "Failed to close directory!");
+		if((res = FSDIR_Close(dirHandle))) throw fsException(_FILE_, __LINE__, res, "无法关闭目录!");
 
 		return filesFolders;
 	}
@@ -471,7 +471,7 @@ namespace fs
 		Result res;
 
 
-		if((res = FSUSER_RenameDirectory(srcArchive, srcPath, dstArchive, dstPath))) throw fsException(_FILE_, __LINE__, res, "Failed to move directory!");
+		if((res = FSUSER_RenameDirectory(srcArchive, srcPath, dstArchive, dstPath))) throw fsException(_FILE_, __LINE__, res, "无法移动目录!");
 	}
 
 
@@ -548,7 +548,7 @@ namespace fs
 		if(path.compare(u"/") != 0)
 		{
 			if((res = FSUSER_DeleteDirectoryRecursively(archive, dirPath)))
-				throw fsException(_FILE_, __LINE__, res, "Failed to delete directory!");
+				throw fsException(_FILE_, __LINE__, res, "删除目录失败!");
 		}
 		else // We can't delete "/" itself so delete everything in root
 		{
