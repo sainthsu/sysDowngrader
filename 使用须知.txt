@@ -1,0 +1,21 @@
+#sysDowngraderCN
+ 这是一个使用CIA文件降级系统版本的工具软件
+#介绍
+
+1. 安装
+  * 你安装在什么系统中它就降级什么系统。比如安装在虚拟系统分区(emuNAND)中，它将作用于你的虚拟系统分区。
+2. 在SD卡根目录创建"updates"文件夹
+3. 放入从任天堂升级服务器或卡带上得到的CIA升级文件
+   * 比如从[3DNUS](http://gbatemp.net/threads/3dnus.376488)下载
+4. 进入应用按要求操作。降级意味着如果版本是全新的将卸载所有的软件和游戏
+
+#申明
+作者对可能对你设备造成的伤害不服任何责任。使用软件造成的后果自负。
+
+#感谢
++ written by profi200
++ svchax written by aliaspider
++ svchax support by AngelSL
++ updated by Plailect
++ 汉化 by Steve Hsu
+
